@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using Niantic.Lightship.AR.NavigationMesh;
 
 public class UIManager : MonoBehaviour
 {
@@ -18,6 +19,12 @@ public class UIManager : MonoBehaviour
     [Header("預覽設定")]
     public Material previewMaterial;             // 預覽狀態的材質
     public Material finalMaterial;               // 最終狀態的材質
+
+    [Header("導航網格設定")]
+    [SerializeField] private LightshipNavMeshManager navMeshManager; // 導航網格管理器的引用
+    [SerializeField] private float forwardDistance = 1.5f;           // 相機前方距離
+    [SerializeField] private float downwardCheckDistance = 10f;      // 向下檢測距離
+    private LightshipNavMeshAgent previewAgent;                      // 預覽模型的導航代理
 
     [Header("舊版Sculpt - 保留向後兼容")]
     public GameObject SculptContent;
@@ -95,6 +102,7 @@ public class UIManager : MonoBehaviour
         if (previewModel != null && Time.time - lastUpdateTime > updateInterval)
         {
             lastUpdateTime = Time.time;
+            UpdatePreviewModelPosition();
         }
     }
 
@@ -264,7 +272,6 @@ public class UIManager : MonoBehaviour
 
     void CreatePreviewModel()
     {
-        // 清除舊的預覽模型
         if (previewModel != null)
         {
             Destroy(previewModel);
@@ -284,20 +291,106 @@ public class UIManager : MonoBehaviour
             previewModel = founctionManager.GenerateShapeWithParameters(
                 selectedShape,
                 currentScale,
-                gridSize,  // 使用統一的Grid值
+                gridSize,
                 true  // 標記為預覽模型
             );
 
-            // 設定預覽材質
-            if (previewModel != null && previewMaterial != null)
+            if (previewModel != null)
             {
-                MeshRenderer renderer = previewModel.GetComponent<MeshRenderer>();
-                if (renderer != null)
+                // 設定預覽材質
+                if (previewMaterial != null)
                 {
-                    renderer.material = previewMaterial;
+                    MeshRenderer renderer = previewModel.GetComponent<MeshRenderer>();
+                    if (renderer != null)
+                    {
+                        renderer.material = previewMaterial;
+                    }
                 }
+
+                int previewLayer = LayerMask.NameToLayer("PreviewObject");
+                if (previewLayer != -1)
+                {
+                    SetLayerRecursively(previewModel, previewLayer);
+                }
+                else
+                {
+                    Debug.LogWarning("PreviewObject 圖層不存在，請在 Unity 中創建此圖層");
+                }
+
+                // 添加 LightshipNavMeshAgent 組件
+                // previewAgent = previewModel.GetComponent<LightshipNavMeshAgent>();
+                // if (previewAgent == null)
+                // {
+                //     previewAgent = previewModel.AddComponent<LightshipNavMeshAgent>();
+                // }
+                // 
+                // // 可選：添加路徑渲染器來顯示導航路徑
+                // LightshipNavMeshAgentPathRenderer pathRenderer =
+                //     previewModel.GetComponent<LightshipNavMeshAgentPathRenderer>();
+                // if (pathRenderer == null)
+                // {
+                //     pathRenderer = previewModel.AddComponent<LightshipNavMeshAgentPathRenderer>();
+                //     pathRenderer.enabled = false; // 預設關閉路徑顯示
+                // }
             }
         }
+    }
+
+    void UpdatePreviewModelPosition()
+    {
+        if (previewModel == null || Camera.main == null) return;
+
+        Vector3 cameraPosition = Camera.main.transform.position;
+        Vector3 cameraForward = Camera.main.transform.forward;
+
+        // 將相機前方向量投影到水平面（移除Y分量）
+        Vector3 horizontalForward = new Vector3(cameraForward.x, 0, cameraForward.z).normalized;
+
+        // 如果相機朝向過於垂直，使用預設前方
+        if (horizontalForward.magnitude < 0.1f)
+        {
+            horizontalForward = Vector3.forward;
+        }
+
+        // 從相機前方位置向下射線
+        Vector3 rayOrigin = cameraPosition + horizontalForward * forwardDistance;
+        Ray ray = new Ray(rayOrigin, Vector3.down);
+
+        RaycastHit hit;
+        // if (Physics.Raycast(ray, out hit, downwardCheckDistance))
+        // {
+        //     // 找到表面，將預覽模型放置在該位置
+        //     previewModel.transform.position = hit.point;
+        // 
+        //     // 讓模型面向相機的水平方向
+        //     if (horizontalForward != Vector3.zero)
+        //     {
+        //         previewModel.transform.rotation = Quaternion.LookRotation(horizontalForward);
+        //     }
+        // 
+        //     // 如果有 NavMeshAgent，設定目標位置
+        //     if (previewAgent != null)
+        //     {
+        //         previewAgent.SetDestination(hit.point);
+        //     }
+        // }
+        // else
+        // {
+            // 沒有找到表面，保持在相機前方
+            Vector3 defaultPosition = cameraPosition + cameraForward * forwardDistance;
+            defaultPosition.y = cameraPosition.y - 0.5f; // 稍微降低高度
+            previewModel.transform.position = defaultPosition;
+
+            // 面向相機前方
+            if (cameraForward != Vector3.zero)
+            {
+                Vector3 lookDirection = new Vector3(cameraForward.x, 0, cameraForward.z);
+                if (lookDirection != Vector3.zero)
+                {
+                    previewModel.transform.rotation = Quaternion.LookRotation(lookDirection);
+                }
+            }
+        // }
     }
 
     void UpdatePreviewModel()
@@ -332,10 +425,10 @@ public class UIManager : MonoBehaviour
         }
 
         // 刪除之前的最終模型（如果有的話）
-        if (finalModel != null)
-        {
-            Destroy(finalModel);
-        }
+        //if (finalModel != null)
+        //{
+        //    Destroy(finalModel);
+        //}
 
         // 生成最終模型
         if (founctionManager != null)
@@ -362,6 +455,17 @@ public class UIManager : MonoBehaviour
                 if (renderer != null)
                 {
                     renderer.material = finalMaterial;
+                }
+
+                // 設定最終物件的圖層為 SculptObject
+                int sculptLayer = LayerMask.NameToLayer("SculptObject");
+                if (sculptLayer != -1)
+                {
+                    SetLayerRecursively(finalModel, sculptLayer);
+                }
+                else
+                {
+                    Debug.LogWarning("SculptObject 圖層不存在，請在 Unity 中創建此圖層");
                 }
             }
         }
@@ -583,6 +687,18 @@ public class UIManager : MonoBehaviour
     void UpdateGridInput()
     {
         if (GridInputField != null) GridInputField.text = gridSize.ToString();
+    }
+
+    private void SetLayerRecursively(GameObject obj, int layer)
+    {
+        if (obj == null) return;
+
+        obj.layer = layer;
+
+        foreach (Transform child in obj.transform)
+        {
+            SetLayerRecursively(child.gameObject, layer);
+        }
     }
 
     // === 舊版UI控制方法（保留向後兼容）===
