@@ -33,31 +33,65 @@ public class CubeCarvingSystem : MonoBehaviour
     // 添加Collider以支援點擊選擇
     private MeshCollider meshCollider;
 
+    // 組件初始化標記
+    private bool componentsInitialized = false;
+
+    void Awake()
+    {
+        // 在Awake中確保組件初始化
+        EnsureComponentsInitialized();
+    }
+
     void Start()
     {
-        SetupComponents();
+        EnsureComponentsInitialized();
         InitializeVoxels();
         GenerateMesh();
         FindCarvingTools();
     }
 
+    void EnsureComponentsInitialized()
+    {
+        if (componentsInitialized) return;
+
+        SetupComponents();
+        componentsInitialized = true;
+    }
+
     void SetupComponents()
     {
+        // 確保MeshFilter組件存在
         meshFilter = GetComponent<MeshFilter>();
         if (meshFilter == null)
+        {
             meshFilter = gameObject.AddComponent<MeshFilter>();
+            if (showDebugInfo)
+                Debug.Log("Added MeshFilter component");
+        }
 
+        // 確保MeshRenderer組件存在
         meshRenderer = GetComponent<MeshRenderer>();
         if (meshRenderer == null)
+        {
             meshRenderer = gameObject.AddComponent<MeshRenderer>();
+            if (showDebugInfo)
+                Debug.Log("Added MeshRenderer component");
+        }
 
         // 添加MeshCollider以支援點擊選擇
         meshCollider = GetComponent<MeshCollider>();
         if (meshCollider == null)
+        {
             meshCollider = gameObject.AddComponent<MeshCollider>();
+            if (showDebugInfo)
+                Debug.Log("Added MeshCollider component");
+        }
 
-        if (cubeMaterial != null)
+        // 設定材質
+        if (cubeMaterial != null && meshRenderer != null)
+        {
             meshRenderer.material = cubeMaterial;
+        }
 
         // 設定物件層級（如果需要）
         if (gameObject.layer == 0) // 如果還沒設定層級
@@ -66,10 +100,19 @@ public class CubeCarvingSystem : MonoBehaviour
             if (sculptLayer != -1)
                 gameObject.layer = sculptLayer;
         }
+
+        if (showDebugInfo)
+            Debug.Log("Components setup completed");
     }
 
     void InitializeVoxels()
     {
+        if (gridSize <= 0)
+        {
+            Debug.LogError("Grid size must be greater than 0!");
+            gridSize = 10; // 設定預設值
+        }
+
         voxels = new bool[gridSize, gridSize, gridSize];
 
         // 根據形狀類型初始化體素
@@ -294,6 +337,16 @@ public class CubeCarvingSystem : MonoBehaviour
 
     void GenerateMesh()
     {
+        // 確保組件已初始化
+        EnsureComponentsInitialized();
+
+        // 雙重檢查 meshFilter 是否存在
+        if (meshFilter == null)
+        {
+            Debug.LogError("MeshFilter is null! Cannot generate mesh.");
+            return;
+        }
+
         List<Vector3> meshVertices = new List<Vector3>();
         List<int> triangles = new List<int>();
         List<Vector3> normals = new List<Vector3>();
@@ -316,20 +369,40 @@ public class CubeCarvingSystem : MonoBehaviour
         }
 
         // 更新mesh
-        if (mesh == null) mesh = new Mesh();
-        mesh.Clear();
-        mesh.vertices = meshVertices.ToArray();
-        mesh.triangles = triangles.ToArray();
-        mesh.normals = normals.ToArray();
-        mesh.RecalculateBounds();
-
-        meshFilter.mesh = mesh;
-
-        // 更新MeshCollider
-        if (meshCollider != null)
+        if (mesh == null)
         {
-            meshCollider.sharedMesh = null; // 先清空
-            meshCollider.sharedMesh = mesh; // 重新指派
+            mesh = new Mesh();
+            mesh.name = $"VoxelMesh_{shapeType}";
+        }
+
+        mesh.Clear();
+
+        if (meshVertices.Count > 0)
+        {
+            mesh.vertices = meshVertices.ToArray();
+            mesh.triangles = triangles.ToArray();
+            mesh.normals = normals.ToArray();
+            mesh.RecalculateBounds();
+        }
+
+        // 安全地設定mesh
+        try
+        {
+            meshFilter.mesh = mesh;
+
+            // 更新MeshCollider
+            if (meshCollider != null)
+            {
+                meshCollider.sharedMesh = null; // 先清空
+                meshCollider.sharedMesh = mesh; // 重新指派
+            }
+
+            if (showDebugInfo)
+                Debug.Log($"Mesh generated successfully with {meshVertices.Count} vertices");
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"Error setting mesh: {e.Message}");
         }
     }
 
@@ -441,6 +514,22 @@ public class CubeCarvingSystem : MonoBehaviour
     // 公開方法供外部動態調整參數
     public void SetParameters(float newCubeSize, int newGridSize, VoxelShape newShapeType)
     {
+        // 確保組件已初始化
+        EnsureComponentsInitialized();
+
+        // 驗證參數
+        if (newCubeSize <= 0)
+        {
+            Debug.LogWarning("CubeSize must be greater than 0, using default value 1");
+            newCubeSize = 1f;
+        }
+
+        if (newGridSize <= 0)
+        {
+            Debug.LogWarning("GridSize must be greater than 0, using default value 10");
+            newGridSize = 10;
+        }
+
         cubeSize = newCubeSize;
         gridSize = newGridSize;
         shapeType = newShapeType;
@@ -449,7 +538,8 @@ public class CubeCarvingSystem : MonoBehaviour
         InitializeVoxels();
         GenerateMesh();
 
-        Debug.Log($"CubeCarvingSystem參數已更新 - CubeSize: {cubeSize}, GridSize: {gridSize}, Shape: {shapeType}");
+        if (showDebugInfo)
+            Debug.Log($"CubeCarvingSystem參數已更新 - CubeSize: {cubeSize}, GridSize: {gridSize}, Shape: {shapeType}");
     }
 
     // 保持原有的SetParameters方法以保持向後兼容

@@ -8,287 +8,584 @@ public class UIManager : MonoBehaviour
     public RectTransform FounctionUI_RT;
     public RectTransform HandleArrow_RT;
     private bool UI_on;
-    private bool SculptUI_on;
     public GameObject BackButton;
-    public GameObject UIHome;
 
-    [Header("Sculpt")]
+    [Header("三個主要面板")]
+    public GameObject UIHome;                    // 主頁面板
+    public GameObject SculptPanel1;              // 形狀選擇面板
+    public GameObject SculptPanel2;              // 參數調整面板
+
+    [Header("預覽設定")]
+    public Material previewMaterial;             // 預覽狀態的材質
+    public Material finalMaterial;               // 最終狀態的材質
+
+    [Header("舊版Sculpt - 保留向後兼容")]
     public GameObject SculptContent;
     public InputField CubeScale;
     public InputField GridScale;
     public Button CubeInstantiate_A;
     public Button CubeInstantiate_B;
 
-    [Header("形狀選擇按鈕 - 直接生成")]
-    public Button ShapeButton_Cube;      // 正方體按鈕
-    public Button ShapeButton_Sphere;    // 圓體按鈕
-    public Button ShapeButton_Capsule;   // 膠囊體按鈕
-    public Button ShapeButton_Cylinder;  // 圓柱體按鈕
+    [Header("SculptPanel1 - 形狀選擇按鈕")]
+    public Button ShapeButton_Cube;              // 正方體按鈕
+    public Button ShapeButton_Sphere;            // 圓體按鈕
+    public Button ShapeButton_Capsule;           // 膠囊體按鈕
+    public Button ShapeButton_Cylinder;          // 圓柱體按鈕
 
-    [Header("動態調整UI")]
-    public GameObject DynamicAdjustPanel;     // 動態調整面板
-    public InputField DynamicCubeScale;       // 動態大小調整
-    public InputField DynamicGridScale;       // 動態Grid調整
-    public Button ApplyChangesButton;         // 應用變更按鈕
-    public Button CloseDynamicPanelButton;    // 關閉面板按鈕
-    public Text CurrentObjectInfo;            // 顯示當前選中物件資訊
+    [Header("SculptPanel2 - 參數調整UI")]
+    // 主要縮放控制
+    public Slider MainScaleSlider;               // 主縮放滑桿
+    public Text MainScaleValue;                  // 主縮放數值顯示(百分比)
+
+    // 個別軸縮放控制
+    public Slider ScaleXSlider;                  // X軸縮放滑桿
+    public Slider ScaleYSlider;                  // Y軸縮放滑桿
+    public Slider ScaleZSlider;                  // Z軸縮放滑桿
+    public InputField ScaleXInputField;          // X軸輸入欄位
+    public InputField ScaleYInputField;          // Y軸輸入欄位
+    public InputField ScaleZInputField;          // Z軸輸入欄位
+
+    // Grid設定 - 統一為單一InputField
+    public InputField GridInputField;            // 統一Grid輸入欄位
+
+    // 控制按鈕
+    public Button GenerateButton;                // 最終生成按鈕
+    public Button ResetButton;                   // 重置參數按鈕
 
     [Header("功能管理器")]
-    public FounctionManager functionManager;  // 必須加FounctionManager的引用
+    public FounctionManager founctionManager;
 
-    // 當前選中的CubeCarvingSystem物件
-    private CubeCarvingSystem selectedCarvingSystem;
+    // 狀態管理
+    private VoxelShape selectedShape = VoxelShape.Cube;
+    private GameObject previewModel;             // 預覽模型
+    private GameObject finalModel;               // 最終模型
 
-    // Start is called before the first frame update
+    // 參數值
+    private float mainScale = 1f;
+    private Vector3 individualScale = Vector3.one;
+    private int gridSize = 10;                   // 統一的Grid大小
+
+    // 更新控制
+    private bool isUpdatingUI = false;           // 防止循環更新
+    private float lastUpdateTime = 0f;           // 用於限制更新頻率
+    private const float updateInterval = 0.1f;   // 更新間隔
+
     void Start()
     {
         UI_on = false;
-        FounctionUI_RT.anchoredPosition = new Vector3(0, -320, 0);
+        FounctionUI_RT.anchoredPosition = new Vector3(0, -400, 0);
         HandleArrow_RT.localScale = new Vector3(0.6f, 0.6f, 0.6f);
 
-        // 初始時按鈕不可互動
-        UpdateButtonInteractable();
+        // 初始化UI狀態
+        InitializeUI();
 
-        // 監聽輸入欄位的變化
-        if (CubeScale != null) CubeScale.onValueChanged.AddListener(OnInputFieldChanged);
-        if (GridScale != null) GridScale.onValueChanged.AddListener(OnInputFieldChanged);
+        // 設定所有按鈕事件
+        SetupAllButtonEvents();
 
-        // 連接按鈕事件
-        SetupButtonEvents();
+        // 設定滑桿和輸入欄位事件
+        SetupSliderAndInputEvents();
 
-        // 設定形狀按鈕事件 - 直接生成
-        SetupShapeButtonEvents();
-
-        // 設定動態調整事件
-        SetupDynamicAdjustEvents();
-
-        // 初始隱藏動態調整面板
-        if (DynamicAdjustPanel != null)
-            DynamicAdjustPanel.SetActive(false);
+        // 舊版功能保留
+        SetupLegacyEvents();
     }
 
     void Update()
     {
-        // 檢測滑鼠點擊選擇物件
-        if (Input.GetMouseButtonDown(0))
+        // 限制預覽更新頻率
+        if (previewModel != null && Time.time - lastUpdateTime > updateInterval)
         {
-            CheckObjectSelection();
+            lastUpdateTime = Time.time;
         }
     }
 
-    private void SetupButtonEvents()
+    void InitializeUI()
     {
-        if (functionManager != null)
+        // 初始只顯示UIHome
+        if (UIHome != null) UIHome.SetActive(true);
+        if (SculptPanel1 != null) SculptPanel1.SetActive(false);
+        if (SculptPanel2 != null) SculptPanel2.SetActive(false);
+        if (BackButton != null) BackButton.SetActive(false);
+
+        // 初始化參數值
+        UpdateAllUIValues();
+    }
+
+    void SetupAllButtonEvents()
+    {
+        // 形狀選擇按鈕
+        if (ShapeButton_Cube != null)
         {
-            // 連接按鈕A到SculptModelA方法
+            ShapeButton_Cube.onClick.AddListener(() => OnShapeSelected(VoxelShape.Cube));
+        }
+        if (ShapeButton_Sphere != null)
+        {
+            ShapeButton_Sphere.onClick.AddListener(() => OnShapeSelected(VoxelShape.Sphere));
+        }
+        if (ShapeButton_Capsule != null)
+        {
+            ShapeButton_Capsule.onClick.AddListener(() => OnShapeSelected(VoxelShape.Capsule));
+        }
+        if (ShapeButton_Cylinder != null)
+        {
+            ShapeButton_Cylinder.onClick.AddListener(() => OnShapeSelected(VoxelShape.Cylinder));
+        }
+
+        // 控制按鈕
+        if (GenerateButton != null)
+        {
+            GenerateButton.onClick.AddListener(OnGenerateButtonClicked);
+        }
+        if (ResetButton != null)
+        {
+            ResetButton.onClick.AddListener(OnResetButtonClicked);
+        }
+
+        // 後退按鈕
+        if (BackButton != null)
+        {
+            BackButton.GetComponent<Button>().onClick.AddListener(OnBackButtonClicked);
+        }
+    }
+
+    void SetupSliderAndInputEvents()
+    {
+        // 主縮放滑桿
+        if (MainScaleSlider != null)
+        {
+            MainScaleSlider.minValue = 0.1f;
+            MainScaleSlider.maxValue = 3f;
+            MainScaleSlider.value = 1f;
+            MainScaleSlider.onValueChanged.AddListener(OnMainScaleChanged);
+        }
+
+        // 個別軸滑桿
+        if (ScaleXSlider != null)
+        {
+            ScaleXSlider.minValue = 0.1f;
+            ScaleXSlider.maxValue = 3f;
+            ScaleXSlider.value = 1f;
+            ScaleXSlider.onValueChanged.AddListener(OnScaleXSliderChanged);
+        }
+        if (ScaleYSlider != null)
+        {
+            ScaleYSlider.minValue = 0.1f;
+            ScaleYSlider.maxValue = 3f;
+            ScaleYSlider.value = 1f;
+            ScaleYSlider.onValueChanged.AddListener(OnScaleYSliderChanged);
+        }
+        if (ScaleZSlider != null)
+        {
+            ScaleZSlider.minValue = 0.1f;
+            ScaleZSlider.maxValue = 3f;
+            ScaleZSlider.value = 1f;
+            ScaleZSlider.onValueChanged.AddListener(OnScaleZSliderChanged);
+        }
+
+        // 縮放輸入欄位
+        if (ScaleXInputField != null)
+        {
+            ScaleXInputField.text = "1.00";
+            ScaleXInputField.onEndEdit.AddListener(OnScaleXInputChanged);
+        }
+        if (ScaleYInputField != null)
+        {
+            ScaleYInputField.text = "1.00";
+            ScaleYInputField.onEndEdit.AddListener(OnScaleYInputChanged);
+        }
+        if (ScaleZInputField != null)
+        {
+            ScaleZInputField.text = "1.00";
+            ScaleZInputField.onEndEdit.AddListener(OnScaleZInputChanged);
+        }
+
+        // 統一Grid輸入欄位
+        if (GridInputField != null)
+        {
+            GridInputField.text = "10";
+            GridInputField.onEndEdit.AddListener(OnGridInputChanged);
+        }
+    }
+
+    void SetupLegacyEvents()
+    {
+        // 舊版功能保留
+        if (founctionManager != null)
+        {
             if (CubeInstantiate_A != null)
             {
                 CubeInstantiate_A.onClick.AddListener(() => {
-                    functionManager.SculptModelA();
+                    founctionManager.SculptModelA();
                     Debug.Log("生成VoxelCube模型");
                 });
             }
 
-            // 連接按鈕B到SculptModelB方法
             if (CubeInstantiate_B != null)
             {
                 CubeInstantiate_B.onClick.AddListener(() => {
-                    functionManager.SculptModelB();
+                    founctionManager.SculptModelB();
                     Debug.Log("生成CubeCarvingSystem模型");
                 });
             }
         }
-        else
-        {
-            Debug.LogError("FounctionManager未設定!請在Inspector中指派");
-        }
+
+        // 舊版輸入欄位監聽
+        if (CubeScale != null) CubeScale.onValueChanged.AddListener(OnInputFieldChanged);
+        if (GridScale != null) GridScale.onValueChanged.AddListener(OnInputFieldChanged);
+        UpdateButtonInteractable();
     }
 
-    private void SetupShapeButtonEvents()
+    // === 主要流程控制 ===
+
+    public void SculptButton()
     {
-        if (functionManager != null)
-        {
-            // 設定形狀選擇按鈕的事件 - 直接生成模型
-            if (ShapeButton_Cube != null)
-            {
-                ShapeButton_Cube.onClick.AddListener(() => {
-                    functionManager.GenerateCube();
-                    Debug.Log("直接生成正方體模型");
-                });
-            }
+        // UIHome -> SculptPanel1
+        if (UIHome != null) UIHome.SetActive(false);
+        if (SculptPanel1 != null) SculptPanel1.SetActive(true);
+        if (SculptPanel2 != null) SculptPanel2.SetActive(false);
+        if (BackButton != null) BackButton.SetActive(true);
 
-            if (ShapeButton_Sphere != null)
-            {
-                ShapeButton_Sphere.onClick.AddListener(() => {
-                    functionManager.GenerateSphere();
-                    Debug.Log("直接生成圓體模型");
-                });
-            }
-
-            if (ShapeButton_Capsule != null)
-            {
-                ShapeButton_Capsule.onClick.AddListener(() => {
-                    functionManager.GenerateCapsule();
-                    Debug.Log("直接生成膠囊體模型");
-                });
-            }
-
-            if (ShapeButton_Cylinder != null)
-            {
-                ShapeButton_Cylinder.onClick.AddListener(() => {
-                    functionManager.GenerateCylinder();
-                    Debug.Log("直接生成圓柱體模型");
-                });
-            }
-        }
-        else
-        {
-            Debug.LogError("FounctionManager未設定!無法設定形狀按鈕事件");
-        }
+        Debug.Log("進入形狀選擇面板");
     }
 
-    private void SetupDynamicAdjustEvents()
+    void OnShapeSelected(VoxelShape shape)
     {
-        // 應用變更按鈕
-        if (ApplyChangesButton != null)
-        {
-            ApplyChangesButton.onClick.AddListener(ApplyDynamicChanges);
-        }
+        selectedShape = shape;
 
-        // 關閉面板按鈕
-        if (CloseDynamicPanelButton != null)
-        {
-            CloseDynamicPanelButton.onClick.AddListener(CloseDynamicPanel);
-        }
+        // SculptPanel1 -> SculptPanel2
+        if (SculptPanel1 != null) SculptPanel1.SetActive(false);
+        if (SculptPanel2 != null) SculptPanel2.SetActive(true);
+        // BackButton保持顯示
+
+        // 立即生成預覽模型
+        CreatePreviewModel();
+
+        Debug.Log($"選擇形狀: {shape}，進入參數調整面板，生成預覽模型");
     }
 
-    private void CheckObjectSelection()
+    void CreatePreviewModel()
     {
-        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-        RaycastHit hit;
-
-        if (Physics.Raycast(ray, out hit))
+        // 清除舊的預覽模型
+        if (previewModel != null)
         {
-            CubeCarvingSystem carvingSystem = hit.collider.GetComponent<CubeCarvingSystem>();
-            if (carvingSystem != null)
+            Destroy(previewModel);
+        }
+
+        // 生成新的預覽模型
+        if (founctionManager != null)
+        {
+            // 計算當前縮放值
+            Vector3 currentScale = new Vector3(
+                mainScale * individualScale.x,
+                mainScale * individualScale.y,
+                mainScale * individualScale.z
+            );
+
+            // 生成預覽模型
+            previewModel = founctionManager.GenerateShapeWithParameters(
+                selectedShape,
+                currentScale,
+                gridSize,  // 使用統一的Grid值
+                true  // 標記為預覽模型
+            );
+
+            // 設定預覽材質
+            if (previewModel != null && previewMaterial != null)
             {
-                SelectCarvingSystem(carvingSystem);
+                MeshRenderer renderer = previewModel.GetComponent<MeshRenderer>();
+                if (renderer != null)
+                {
+                    renderer.material = previewMaterial;
+                }
             }
         }
     }
 
-    private void SelectCarvingSystem(CubeCarvingSystem carvingSystem)
+    void UpdatePreviewModel()
     {
-        selectedCarvingSystem = carvingSystem;
+        if (previewModel == null) return;
 
-        // 顯示動態調整面板
-        if (DynamicAdjustPanel != null)
+        // 計算最終縮放值
+        Vector3 finalScale = new Vector3(
+            mainScale * individualScale.x,
+            mainScale * individualScale.y,
+            mainScale * individualScale.z
+        );
+
+        // 更新縮放
+        previewModel.transform.localScale = finalScale;
+
+        // 更新Grid參數
+        CubeCarvingSystem carvingSystem = previewModel.GetComponent<CubeCarvingSystem>();
+        if (carvingSystem != null)
         {
-            DynamicAdjustPanel.SetActive(true);
-        }
-
-        // 更新當前數值到輸入欄位
-        UpdateDynamicInputFields();
-
-        // 更新物件資訊顯示
-        UpdateCurrentObjectInfo();
-
-        Debug.Log($"選中物件: {carvingSystem.gameObject.name}");
-    }
-
-    private void UpdateDynamicInputFields()
-    {
-        if (selectedCarvingSystem == null) return;
-
-        // 使用反射獲取當前數值
-        var cubeSizeField = typeof(CubeCarvingSystem).GetField("cubeSize",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        var gridSizeField = typeof(CubeCarvingSystem).GetField("gridSize",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-        if (cubeSizeField != null && DynamicCubeScale != null)
-        {
-            float currentCubeSize = (float)cubeSizeField.GetValue(selectedCarvingSystem);
-            DynamicCubeScale.text = currentCubeSize.ToString();
-        }
-
-        if (gridSizeField != null && DynamicGridScale != null)
-        {
-            int currentGridSize = (int)gridSizeField.GetValue(selectedCarvingSystem);
-            DynamicGridScale.text = currentGridSize.ToString();
+            carvingSystem.SetParameters(1f, gridSize, selectedShape);
         }
     }
 
-    private void UpdateCurrentObjectInfo()
+    void OnGenerateButtonClicked()
     {
-        if (selectedCarvingSystem == null || CurrentObjectInfo == null) return;
-
-        // 獲取當前物件資訊
-        var shapeTypeField = typeof(CubeCarvingSystem).GetField("shapeType",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-        if (shapeTypeField != null)
+        // 刪除預覽模型
+        if (previewModel != null)
         {
-            VoxelShape currentShape = (VoxelShape)shapeTypeField.GetValue(selectedCarvingSystem);
-            CurrentObjectInfo.text = $"選中物件: {GetShapeDisplayName(currentShape)}\n物件名稱: {selectedCarvingSystem.gameObject.name}";
+            Destroy(previewModel);
+            previewModel = null;
+        }
+
+        // 刪除之前的最終模型（如果有的話）
+        if (finalModel != null)
+        {
+            Destroy(finalModel);
+        }
+
+        // 生成最終模型
+        if (founctionManager != null)
+        {
+            // 計算最終縮放值
+            Vector3 finalScale = new Vector3(
+                mainScale * individualScale.x,
+                mainScale * individualScale.y,
+                mainScale * individualScale.z
+            );
+
+            // 生成最終模型
+            finalModel = founctionManager.GenerateShapeWithParameters(
+                selectedShape,
+                finalScale,
+                gridSize,  // 使用統一的Grid值
+                false  // 標記為最終模型
+            );
+
+            // 設定最終材質
+            if (finalModel != null && finalMaterial != null)
+            {
+                MeshRenderer renderer = finalModel.GetComponent<MeshRenderer>();
+                if (renderer != null)
+                {
+                    renderer.material = finalMaterial;
+                }
+            }
+        }
+
+        // 生成完畢後回到UIHome
+        if (SculptPanel2 != null) SculptPanel2.SetActive(false);
+        if (UIHome != null) UIHome.SetActive(true);
+        if (BackButton != null) BackButton.SetActive(false);
+
+        Debug.Log($"生成最終模型完成: {selectedShape}");
+    }
+
+    void OnResetButtonClicked()
+    {
+        // 重置所有參數到預設值
+        mainScale = 1f;
+        individualScale = Vector3.one;
+        gridSize = 10;  // 重置統一Grid值
+
+        // 更新UI
+        UpdateAllUIValues();
+
+        // 更新預覽模型
+        CreatePreviewModel();
+
+        Debug.Log("參數已重置");
+    }
+
+    void OnBackButtonClicked()
+    {
+        // 根據當前面板狀態決定後退行為
+        if (SculptPanel1 != null && SculptPanel1.activeInHierarchy)
+        {
+            // 從SculptPanel1回到UIHome
+            SculptPanel1.SetActive(false);
+            if (UIHome != null) UIHome.SetActive(true);
+            if (BackButton != null) BackButton.SetActive(false);
+            Debug.Log("從形狀選擇面板回到主頁");
+        }
+        else if (SculptPanel2 != null && SculptPanel2.activeInHierarchy)
+        {
+            // 從SculptPanel2回到UIHome，並刪除預覽模型
+            if (previewModel != null)
+            {
+                Destroy(previewModel);
+                previewModel = null;
+            }
+            SculptPanel2.SetActive(false);
+            if (UIHome != null) UIHome.SetActive(true);
+            if (BackButton != null) BackButton.SetActive(false);
+            Debug.Log("從參數調整面板回到主頁，刪除預覽模型");
         }
     }
 
-    private string GetShapeDisplayName(VoxelShape shape)
+    // === 滑桿和輸入欄位事件處理 ===
+
+    void OnMainScaleChanged(float value)
     {
-        switch (shape)
+        if (isUpdatingUI) return;
+
+        mainScale = value;
+        if (MainScaleValue != null)
         {
-            case VoxelShape.Cube: return "正方體";
-            case VoxelShape.Sphere: return "圓體";
-            case VoxelShape.Capsule: return "膠囊體";
-            case VoxelShape.Cylinder: return "圓柱體";
-            default: return "未知形狀";
+            MainScaleValue.text = $"{Mathf.RoundToInt(value * 100)}%";
+        }
+
+        // 同步更新個別軸滑桿
+        isUpdatingUI = true;
+        if (ScaleXSlider != null) ScaleXSlider.value = value;
+        if (ScaleYSlider != null) ScaleYSlider.value = value;
+        if (ScaleZSlider != null) ScaleZSlider.value = value;
+        isUpdatingUI = false;
+
+        // 更新個別縮放值
+        individualScale = Vector3.one * value;
+        UpdateIndividualScaleInputs();
+
+        // 更新預覽模型
+        UpdatePreviewModel();
+    }
+
+    void OnScaleXSliderChanged(float value)
+    {
+        if (isUpdatingUI) return;
+
+        individualScale.x = value;
+        if (ScaleXInputField != null)
+        {
+            ScaleXInputField.text = value.ToString("F2");
+        }
+        UpdatePreviewModel();
+    }
+
+    void OnScaleYSliderChanged(float value)
+    {
+        if (isUpdatingUI) return;
+
+        individualScale.y = value;
+        if (ScaleYInputField != null)
+        {
+            ScaleYInputField.text = value.ToString("F2");
+        }
+        UpdatePreviewModel();
+    }
+
+    void OnScaleZSliderChanged(float value)
+    {
+        if (isUpdatingUI) return;
+
+        individualScale.z = value;
+        if (ScaleZInputField != null)
+        {
+            ScaleZInputField.text = value.ToString("F2");
+        }
+        UpdatePreviewModel();
+    }
+
+    void OnScaleXInputChanged(string value)
+    {
+        if (isUpdatingUI) return;
+
+        if (float.TryParse(value, out float result))
+        {
+            result = Mathf.Clamp(result, 0.1f, 3f);
+            individualScale.x = result;
+
+            isUpdatingUI = true;
+            if (ScaleXSlider != null) ScaleXSlider.value = result;
+            if (ScaleXInputField != null) ScaleXInputField.text = result.ToString("F2");
+            isUpdatingUI = false;
+
+            UpdatePreviewModel();
         }
     }
 
-    private void ApplyDynamicChanges()
+    void OnScaleYInputChanged(string value)
     {
-        if (selectedCarvingSystem == null) return;
+        if (isUpdatingUI) return;
 
-        // 獲取新的數值
-        float newCubeSize = 1f;
-        int newGridSize = 10;
-
-        if (DynamicCubeScale != null && float.TryParse(DynamicCubeScale.text, out float cubeSize) && cubeSize > 0)
+        if (float.TryParse(value, out float result))
         {
-            newCubeSize = cubeSize;
+            result = Mathf.Clamp(result, 0.1f, 3f);
+            individualScale.y = result;
+
+            isUpdatingUI = true;
+            if (ScaleYSlider != null) ScaleYSlider.value = result;
+            if (ScaleYInputField != null) ScaleYInputField.text = result.ToString("F2");
+            isUpdatingUI = false;
+
+            UpdatePreviewModel();
         }
-
-        if (DynamicGridScale != null && int.TryParse(DynamicGridScale.text, out int gridSize) && gridSize > 0)
-        {
-            newGridSize = gridSize;
-        }
-
-        // 獲取當前形狀類型
-        var shapeTypeField = typeof(CubeCarvingSystem).GetField("shapeType",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-        VoxelShape currentShape = VoxelShape.Cube;
-        if (shapeTypeField != null)
-        {
-            currentShape = (VoxelShape)shapeTypeField.GetValue(selectedCarvingSystem);
-        }
-
-        // 應用新參數
-        selectedCarvingSystem.SetParameters(newCubeSize, newGridSize, currentShape);
-
-        Debug.Log($"應用變更 - CubeSize: {newCubeSize}, GridSize: {newGridSize}, Shape: {currentShape}");
     }
 
-    private void CloseDynamicPanel()
+    void OnScaleZInputChanged(string value)
     {
-        if (DynamicAdjustPanel != null)
+        if (isUpdatingUI) return;
+
+        if (float.TryParse(value, out float result))
         {
-            DynamicAdjustPanel.SetActive(false);
+            result = Mathf.Clamp(result, 0.1f, 3f);
+            individualScale.z = result;
+
+            isUpdatingUI = true;
+            if (ScaleZSlider != null) ScaleZSlider.value = result;
+            if (ScaleZInputField != null) ScaleZInputField.text = result.ToString("F2");
+            isUpdatingUI = false;
+
+            UpdatePreviewModel();
         }
-        selectedCarvingSystem = null;
-        Debug.Log("關閉動態調整面板");
     }
+
+    // 統一Grid輸入欄位處理
+    void OnGridInputChanged(string value)
+    {
+        if (isUpdatingUI) return;
+
+        if (int.TryParse(value, out int result))
+        {
+            result = Mathf.Clamp(result, 1, 100);
+            gridSize = result;  // 設定統一Grid值
+
+            if (GridInputField != null) GridInputField.text = result.ToString();
+            UpdatePreviewModel();
+        }
+    }
+
+    // === 輔助方法 ===
+
+    void UpdateAllUIValues()
+    {
+        isUpdatingUI = true;
+
+        // 更新滑桿
+        if (MainScaleSlider != null) MainScaleSlider.value = mainScale;
+        if (ScaleXSlider != null) ScaleXSlider.value = individualScale.x;
+        if (ScaleYSlider != null) ScaleYSlider.value = individualScale.y;
+        if (ScaleZSlider != null) ScaleZSlider.value = individualScale.z;
+
+        // 更新主縮放顯示
+        if (MainScaleValue != null)
+        {
+            MainScaleValue.text = $"{Mathf.RoundToInt(mainScale * 100)}%";
+        }
+
+        // 更新輸入欄位
+        UpdateIndividualScaleInputs();
+        UpdateGridInput();
+
+        isUpdatingUI = false;
+    }
+
+    void UpdateIndividualScaleInputs()
+    {
+        if (ScaleXInputField != null) ScaleXInputField.text = individualScale.x.ToString("F2");
+        if (ScaleYInputField != null) ScaleYInputField.text = individualScale.y.ToString("F2");
+        if (ScaleZInputField != null) ScaleZInputField.text = individualScale.z.ToString("F2");
+    }
+
+    void UpdateGridInput()
+    {
+        if (GridInputField != null) GridInputField.text = gridSize.ToString();
+    }
+
+    // === 舊版UI控制方法（保留向後兼容）===
 
     public void FunctionUISwitch()
     {
@@ -301,42 +598,46 @@ public class UIManager : MonoBehaviour
         }
         else
         {
-            FounctionUI_RT.anchoredPosition = new Vector3(0, -320, 0);
+            FounctionUI_RT.anchoredPosition = new Vector3(0, -400, 0);
             HandleArrow_RT.localScale = new Vector3(0.6f, 0.6f, 0.6f);
         }
     }
 
-    public void SculptButton()
-    {
-        SculptUI_on = true;
-        SculptContent.SetActive(true);
-        UIHome.SetActive(false);
-
-        BackButton.SetActive(true);
-    }
-
     public void Back()
     {
-        SculptUI_on = false;
-        UIHome.SetActive(true);
-        SculptContent.SetActive(false);
-        BackButton.SetActive(false);
+        // 舊版後退功能
+        if (SculptContent != null) SculptContent.SetActive(false);
+        if (UIHome != null) UIHome.SetActive(true);
+        if (BackButton != null) BackButton.SetActive(false);
     }
 
     public void Clear()
     {
-        for (int i = functionManager.parentObject.childCount - 1; i >= 0; i--)
+        if (founctionManager != null && founctionManager.parentObject != null)
         {
-            Transform child = functionManager.parentObject.GetChild(i);
-
-            if (child.gameObject.layer == LayerMask.NameToLayer("SculptObject"))
+            for (int i = founctionManager.parentObject.childCount - 1; i >= 0; i--)
             {
-                Destroy(child.gameObject);
+                Transform child = founctionManager.parentObject.GetChild(i);
+                if (child.gameObject.layer == LayerMask.NameToLayer("SculptObject"))
+                {
+                    Destroy(child.gameObject);
+                }
             }
         }
 
-        // 清除時也關閉動態調整面板
-        CloseDynamicPanel();
+        // 清除當前生成的模型引用
+        if (previewModel != null)
+        {
+            Destroy(previewModel);
+            previewModel = null;
+        }
+        if (finalModel != null)
+        {
+            Destroy(finalModel);
+            finalModel = null;
+        }
+
+        founctionManager.ClearButton.SetActive(false);
     }
 
     private void OnInputFieldChanged(string value)
@@ -344,26 +645,22 @@ public class UIManager : MonoBehaviour
         UpdateButtonInteractable();
     }
 
-    // 更新按鈕的可互動狀態
     private void UpdateButtonInteractable()
     {
         bool cubeScaleValid = IsValidInput(CubeScale != null ? CubeScale.text : "");
         bool gridScaleValid = IsValidInput(GridScale != null ? GridScale.text : "");
-
-        // 當兩個輸入欄位都有有效值時，按鈕才可互動
         bool shouldEnable = cubeScaleValid && gridScaleValid;
 
         if (CubeInstantiate_A != null) CubeInstantiate_A.interactable = shouldEnable;
         if (CubeInstantiate_B != null) CubeInstantiate_B.interactable = shouldEnable;
     }
 
-    // 檢查輸入是否有效（非空且為有效數字）
     private bool IsValidInput(string input)
     {
         if (string.IsNullOrWhiteSpace(input))
             return false;
 
         float result;
-        return float.TryParse(input, out result) && result > 0; // 假設需要正數
+        return float.TryParse(input, out result) && result > 0;
     }
 }
