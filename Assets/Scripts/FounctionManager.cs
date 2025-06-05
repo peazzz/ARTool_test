@@ -79,20 +79,6 @@ public class FounctionManager : MonoBehaviour
         return newCarvingSystem;
     }
 
-    // === 舊版生成方法（保留向後兼容）===
-
-    public void SculptModelA()
-    {
-        GenerateVoxelCube();
-        ClearButton.SetActive(true);
-    }
-
-    public void SculptModelB()
-    {
-        GenerateCubeCarvingSystem();
-        ClearButton.SetActive(true);
-    }
-
     // 直接生成指定形狀的CubeCarvingSystem（舊版方法）
     public void GenerateShape(VoxelShape shapeType)
     {
@@ -141,107 +127,6 @@ public class FounctionManager : MonoBehaviour
     public void GenerateCylinder()
     {
         GenerateShape(VoxelShape.Cylinder);
-    }
-
-    private void GenerateVoxelCube()
-    {
-        if (voxelCubePrefab == null)
-        {
-            Debug.LogError("VoxelCube預製物未設定!");
-            return;
-        }
-
-        if (uiManager == null)
-        {
-            Debug.LogError("UIManager未設定!");
-            return;
-        }
-
-        float cubeSize = GetCubeScaleValue();
-        int gridSize = GetGridScaleValue();
-
-        if (cubeSize <= 0 || gridSize <= 0)
-        {
-            Debug.LogError("輸入值無效!");
-            return;
-        }
-
-        Vector3 spawnPosition = GetSpawnPosition();
-
-        GameObject newVoxelCube = Instantiate(voxelCubePrefab, spawnPosition, Quaternion.identity);
-
-        if (parentObject != null)
-            newVoxelCube.transform.SetParent(parentObject);
-
-        VoxelCube voxelCube = newVoxelCube.GetComponent<VoxelCube>();
-        if (voxelCube != null)
-        {
-            voxelCube.splitCount = gridSize;
-            newVoxelCube.transform.localScale = Vector3.one * cubeSize;
-        }
-        else
-        {
-            Debug.LogError("預製物上找不到VoxelCube組件!");
-        }
-
-        Debug.Log($"生成VoxelCube - CubeSize: {cubeSize}, GridSize: {gridSize}, Position: {spawnPosition}");
-    }
-
-    private void GenerateCubeCarvingSystem()
-    {
-        if (cubeCarvingSystemPrefab == null)
-        {
-            Debug.LogError("CubeCarvingSystem預製物未設定!");
-            return;
-        }
-
-        if (uiManager == null)
-        {
-            Debug.LogError("UIManager未設定!");
-            return;
-        }
-
-        float cubeSize = GetCubeScaleValue();
-        int gridSize = GetGridScaleValue();
-
-        if (cubeSize <= 0 || gridSize <= 0)
-        {
-            Debug.LogError("輸入值無效!");
-            return;
-        }
-
-        Vector3 spawnPosition = GetSpawnPosition();
-
-        GameObject newCarvingSystem = Instantiate(cubeCarvingSystemPrefab, spawnPosition, Quaternion.identity);
-
-        if (parentObject != null)
-            newCarvingSystem.transform.SetParent(parentObject);
-
-        CubeCarvingSystem carvingSystem = newCarvingSystem.GetComponent<CubeCarvingSystem>();
-        if (carvingSystem != null)
-        {
-            carvingSystem.SetParameters(cubeSize, gridSize, VoxelShape.Cube);
-        }
-        else
-        {
-            Debug.LogError("預製物上找不到CubeCarvingSystem組件!");
-        }
-
-        Debug.Log($"生成CubeCarvingSystem - CubeSize: {cubeSize}, GridSize: {gridSize}, Position: {spawnPosition}");
-    }
-
-    private float GetCubeScaleValue()
-    {
-        if (uiManager != null && uiManager.CubeScale != null && float.TryParse(uiManager.CubeScale.text, out float value))
-            return value;
-        return defaultCubeSize;
-    }
-
-    private int GetGridScaleValue()
-    {
-        if (uiManager != null && uiManager.GridScale != null && int.TryParse(uiManager.GridScale.text, out int value))
-            return value;
-        return defaultGridSize;
     }
 
     private Vector3 GetSpawnPosition()

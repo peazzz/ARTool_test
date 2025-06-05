@@ -21,6 +21,14 @@ public class CubeCarvingSystem : MonoBehaviour
     [Header("調試設定")]
     [SerializeField] private bool showDebugInfo = false;
 
+    [Header("簡單效能優化")]
+    [SerializeField] private float meshUpdateDelay = 0.1f;  // Mesh 更新延遲
+    private float lastMeshUpdateTime = 0f;  // 記錄上次更新時間
+
+    private List<Vector3> reusableVertices = new List<Vector3>();
+    private List<int> reusableTriangles = new List<int>();
+    private List<Vector3> reusableNormals = new List<Vector3>();
+
     // 體素數據 - true 表示體素存在
     private bool[,,] voxels;
     private Mesh mesh;
@@ -45,6 +53,12 @@ public class CubeCarvingSystem : MonoBehaviour
     void Start()
     {
         EnsureComponentsInitialized();
+
+        int estimatedSize = gridSize * gridSize * 24;
+        reusableVertices.Capacity = estimatedSize;
+        reusableTriangles.Capacity = estimatedSize * 6;
+        reusableNormals.Capacity = estimatedSize;
+
         InitializeVoxels();
         GenerateMesh();
         FindCarvingTools();
@@ -255,6 +269,9 @@ public class CubeCarvingSystem : MonoBehaviour
 
     void CheckCarvingCollisions()
     {
+        if (Time.time - lastMeshUpdateTime < meshUpdateDelay)
+            return;
+
         bool meshNeedsUpdate = false;
 
         if (activeCarvingTools.Count == 0)
@@ -340,20 +357,21 @@ public class CubeCarvingSystem : MonoBehaviour
         // 確保組件已初始化
         EnsureComponentsInitialized();
 
-        // 雙重檢查 meshFilter 是否存在
+        // 再次檢查 meshFilter 是否存在
         if (meshFilter == null)
         {
             Debug.LogError("MeshFilter is null! Cannot generate mesh.");
             return;
         }
 
-        List<Vector3> meshVertices = new List<Vector3>();
-        List<int> triangles = new List<int>();
-        List<Vector3> normals = new List<Vector3>();
+        // 清空重用容器（不創建新的）
+        reusableVertices.Clear();
+        reusableTriangles.Clear();
+        reusableNormals.Clear();
 
         float voxelSize = cubeSize / gridSize;
 
-        // 遍歷所有體素
+        // 遍歷所有 Voxel
         for (int x = 0; x < gridSize; x++)
         {
             for (int y = 0; y < gridSize; y++)
@@ -362,13 +380,13 @@ public class CubeCarvingSystem : MonoBehaviour
                 {
                     if (voxels[x, y, z])
                     {
-                        GenerateVoxelFaces(x, y, z, voxelSize, meshVertices, triangles, normals);
+                        GenerateVoxelFaces(x, y, z, voxelSize, reusableVertices, reusableTriangles, reusableNormals);
                     }
                 }
             }
         }
 
-        // 更新mesh
+        // 更新 mesh
         if (mesh == null)
         {
             mesh = new Mesh();
@@ -377,28 +395,28 @@ public class CubeCarvingSystem : MonoBehaviour
 
         mesh.Clear();
 
-        if (meshVertices.Count > 0)
+        if (reusableVertices.Count > 0)
         {
-            mesh.vertices = meshVertices.ToArray();
-            mesh.triangles = triangles.ToArray();
-            mesh.normals = normals.ToArray();
+            mesh.vertices = reusableVertices.ToArray();
+            mesh.triangles = reusableTriangles.ToArray();
+            mesh.normals = reusableNormals.ToArray();
             mesh.RecalculateBounds();
         }
 
-        // 安全地設定mesh
+        // 安全地設定 mesh
         try
         {
             meshFilter.mesh = mesh;
 
-            // 更新MeshCollider
-            if (meshCollider != null)
+            // 優化：降低 Collider 更新頻率
+            if (meshCollider != null && Time.frameCount % 3 == 0) // 每3幀更新一次
             {
-                meshCollider.sharedMesh = null; // 先清空
-                meshCollider.sharedMesh = mesh; // 重新指派
+                meshCollider.sharedMesh = null;
+                meshCollider.sharedMesh = mesh;
             }
 
             if (showDebugInfo)
-                Debug.Log($"Mesh generated successfully with {meshVertices.Count} vertices");
+                Debug.Log($"Optimized mesh generated with {reusableVertices.Count} vertices");
         }
         catch (System.Exception e)
         {

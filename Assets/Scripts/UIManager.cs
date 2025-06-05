@@ -11,7 +11,7 @@ public class UIManager : MonoBehaviour
     private bool UI_on;
     public GameObject BackButton;
 
-    [Header("三個主要面板")]
+    [Header("目前主要面板")]
     public GameObject UIHome;                    // 主頁面板
     public GameObject SculptPanel1;              // 形狀選擇面板
     public GameObject SculptPanel2;              // 參數調整面板
@@ -22,22 +22,14 @@ public class UIManager : MonoBehaviour
 
     [Header("導航網格設定")]
     [SerializeField] private LightshipNavMeshManager navMeshManager; // 導航網格管理器的引用
-    [SerializeField] private float baseForwardDistance = 1.5f;           // 相機前方距離
+    [SerializeField] private float baseForwardDistance = 1.5f;           // 基準前方距離
     [SerializeField] private float downwardCheckDistance = 10f;      // 向下檢測距離
     [SerializeField] private float defaultHeightOffset = 0.5f;
-    private LightshipNavMeshAgent previewAgent;                      // 預覽模型的導航代理
     private float dynamicForwardDistance;                            // 動態計算的前方距離
 
-    [Header("舊版Sculpt - 保留向後兼容")]
-    public GameObject SculptContent;
-    public InputField CubeScale;
-    public InputField GridScale;
-    public Button CubeInstantiate_A;
-    public Button CubeInstantiate_B;
-
     [Header("SculptPanel1 - 形狀選擇按鈕")]
-    public Button ShapeButton_Cube;              // 正方體按鈕
-    public Button ShapeButton_Sphere;            // 圓體按鈕
+    public Button ShapeButton_Cube;              // 立方體按鈕
+    public Button ShapeButton_Sphere;            // 球體按鈕
     public Button ShapeButton_Capsule;           // 膠囊體按鈕
     public Button ShapeButton_Cylinder;          // 圓柱體按鈕
 
@@ -45,6 +37,8 @@ public class UIManager : MonoBehaviour
     // 主要縮放控制
     public Slider MainScaleSlider;               // 主縮放滑桿
     public Text MainScaleValue;                  // 主縮放數值顯示(百分比)
+    public Slider HeightSlider;
+    public Text HeightValue;
 
     // 個別軸縮放控制
     public Slider ScaleXSlider;                  // X軸縮放滑桿
@@ -54,8 +48,8 @@ public class UIManager : MonoBehaviour
     public InputField ScaleYInputField;          // Y軸輸入欄位
     public InputField ScaleZInputField;          // Z軸輸入欄位
 
-    // Grid設定 - 統一為單一InputField
-    public InputField GridInputField;            // 統一Grid輸入欄位
+    // Grid設定
+    public InputField GridInputField;            // 格子Grid輸入欄位
 
     // 控制按鈕
     public Button GenerateButton;                // 最終生成按鈕
@@ -72,14 +66,15 @@ public class UIManager : MonoBehaviour
     // 參數值
     private float mainScale = 1f;
     private Vector3 individualScale = Vector3.one;
-    private int gridSize = 10;                   // 統一的Grid大小
+    private int gridSize = 10;
+    private float heightOffset = 0f;             // 新增：高度偏移值
 
     // 更新控制
-    private bool isUpdatingUI = false;           // 防止循環更新
-    private float lastUpdateTime = 0f;           // 用於限制更新頻率
+    private bool isUpdatingUI = false;           // 防止遞歸更新
+    private float lastUpdateTime = 0f;           // 控制更新頻率
     private const float updateInterval = 0.1f;   // 更新間隔
 
-    // 儲存預覽物件的最後 Transform
+    // 存儲預覽物件的最後 Transform
     private Vector3 lastPreviewPosition;
     private Quaternion lastPreviewRotation;
 
@@ -92,7 +87,13 @@ public class UIManager : MonoBehaviour
     private Vector2 lastTouchPosition;
     private float currentRotationY = 0f;  // 當前Y軸旋轉角度
 
-    [Header("除錯設定")]
+    [Header("簡單UI優化")]
+    [SerializeField] private float raycastCacheTime = 0.15f;  // 射線檢測快取時間
+    private float lastRaycastTime = 0f;
+    private RaycastHit cachedHit;
+    private bool cachedHitResult = false;
+
+    [Header("調試設定")]
     [SerializeField] private bool showDebugInfo = false;
 
     void Start()
@@ -110,15 +111,12 @@ public class UIManager : MonoBehaviour
         // 設定滑桿和輸入欄位事件
         SetupSliderAndInputEvents();
 
-        // 舊版功能保留
-        SetupLegacyEvents();
-
         dynamicForwardDistance = baseForwardDistance;
     }
 
     void Update()
     {
-        // 限制預覽更新頻率
+        // 控制預覽更新頻率
         if (previewModel != null && Time.time - lastUpdateTime > updateInterval)
         {
             lastUpdateTime = Time.time;
@@ -173,7 +171,7 @@ public class UIManager : MonoBehaviour
             ResetButton.onClick.AddListener(OnResetButtonClicked);
         }
 
-        // 後退按鈕
+        // 返回按鈕
         if (BackButton != null)
         {
             BackButton.GetComponent<Button>().onClick.AddListener(OnBackButtonClicked);
@@ -189,6 +187,15 @@ public class UIManager : MonoBehaviour
             MainScaleSlider.maxValue = 3f;
             MainScaleSlider.value = 1f;
             MainScaleSlider.onValueChanged.AddListener(OnMainScaleChanged);
+        }
+
+        // 高度滑桿設定
+        if (HeightSlider != null)
+        {
+            HeightSlider.minValue = -1f;
+            HeightSlider.maxValue = 1f;
+            HeightSlider.value = 0f;
+            HeightSlider.onValueChanged.AddListener(OnHeightChanged);
         }
 
         // 個別軸滑桿
@@ -231,40 +238,12 @@ public class UIManager : MonoBehaviour
             ScaleZInputField.onEndEdit.AddListener(OnScaleZInputChanged);
         }
 
-        // 統一Grid輸入欄位
+        // 格子Grid輸入欄位
         if (GridInputField != null)
         {
             GridInputField.text = "10";
             GridInputField.onEndEdit.AddListener(OnGridInputChanged);
         }
-    }
-
-    void SetupLegacyEvents()
-    {
-        // 舊版功能保留
-        if (founctionManager != null)
-        {
-            if (CubeInstantiate_A != null)
-            {
-                CubeInstantiate_A.onClick.AddListener(() => {
-                    founctionManager.SculptModelA();
-                    Debug.Log("生成VoxelCube模型");
-                });
-            }
-
-            if (CubeInstantiate_B != null)
-            {
-                CubeInstantiate_B.onClick.AddListener(() => {
-                    founctionManager.SculptModelB();
-                    Debug.Log("生成CubeCarvingSystem模型");
-                });
-            }
-        }
-
-        // 舊版輸入欄位監聽
-        if (CubeScale != null) CubeScale.onValueChanged.AddListener(OnInputFieldChanged);
-        if (GridScale != null) GridScale.onValueChanged.AddListener(OnInputFieldChanged);
-        UpdateButtonInteractable();
     }
 
     // === 主要流程控制 ===
@@ -340,24 +319,8 @@ public class UIManager : MonoBehaviour
                 }
                 else
                 {
-                    Debug.LogWarning("PreviewObject 圖層不存在，請在 Unity 中創建此圖層");
+                    Debug.LogWarning("PreviewObject 層級不存在，請在 Unity 中創建此層級");
                 }
-
-                // 添加 LightshipNavMeshAgent 組件
-                // previewAgent = previewModel.GetComponent<LightshipNavMeshAgent>();
-                // if (previewAgent == null)
-                // {
-                //     previewAgent = previewModel.AddComponent<LightshipNavMeshAgent>();
-                // }
-                // 
-                // // 可選：添加路徑渲染器來顯示導航路徑
-                // LightshipNavMeshAgentPathRenderer pathRenderer =
-                //     previewModel.GetComponent<LightshipNavMeshAgentPathRenderer>();
-                // if (pathRenderer == null)
-                // {
-                //     pathRenderer = previewModel.AddComponent<LightshipNavMeshAgentPathRenderer>();
-                //     pathRenderer.enabled = false; // 預設關閉路徑顯示
-                // }
 
                 CalculateDynamicForwardDistance();
             }
@@ -371,69 +334,66 @@ public class UIManager : MonoBehaviour
         Vector3 cameraPosition = Camera.main.transform.position;
         Vector3 cameraForward = Camera.main.transform.forward;
 
-        // 將相機前方向量投影到水平面
+        // 將基準前方向量投影到水平面
         Vector3 horizontalForward = new Vector3(cameraForward.x, 0, cameraForward.z).normalized;
 
-        // 如果相機朝向過於垂直，使用預設前方
+        // 如果基準接近垂直向量，使用預設前方
         if (horizontalForward.magnitude < 0.1f)
         {
             horizontalForward = Vector3.forward;
         }
 
-        // 從相機前方位置向下射線
-        Vector3 rayOrigin = cameraPosition + horizontalForward * dynamicForwardDistance;
-        Ray ray = new Ray(rayOrigin, Vector3.down);
+        bool shouldRaycast = Time.time - lastRaycastTime > raycastCacheTime;
 
-        // 創建圖層遮罩，排除 PreviewObject 圖層
-        int previewLayer = LayerMask.NameToLayer("PreviewObject");
-        int layerMask = ~(1 << previewLayer); // 排除預覽物件圖層
-
-        RaycastHit hit;
-        if (Physics.Raycast(ray, out hit, downwardCheckDistance, layerMask))
+        if (shouldRaycast)
         {
-            // 找到表面
-            Vector3 targetPosition = hit.point;
+            Vector3 rayOrigin = cameraPosition + horizontalForward * dynamicForwardDistance;
+            Ray ray = new Ray(rayOrigin, Vector3.down);
 
-            // 獲取物件的邊界框來計算正確的高度偏移
+            int previewLayer = LayerMask.NameToLayer("PreviewObject");
+            int layerMask = ~(1 << previewLayer);
+
+            cachedHitResult = Physics.Raycast(ray, out cachedHit, downwardCheckDistance, layerMask);
+            lastRaycastTime = Time.time;
+        }
+
+        // 使用快取結果
+        if (cachedHitResult)
+        {
+            Vector3 targetPosition = cachedHit.point;
+
             Renderer renderer = previewModel.GetComponent<Renderer>();
             if (renderer != null)
             {
-                UnityEngine.Bounds bounds = renderer.bounds;  // 明確使用 UnityEngine.Bounds
-                float halfHeight = bounds.extents.y; // 物件高度的一半
-
-                // 將物件提升半個高度，使底部貼齊地面
+                UnityEngine.Bounds bounds = renderer.bounds;
+                float halfHeight = bounds.extents.y;
                 targetPosition.y += halfHeight;
             }
 
-            // 找到表面，將預覽模型放置在該位置
+            targetPosition.y += heightOffset;
             previewModel.transform.position = targetPosition;
 
-            // 計算基礎旋轉（面向相機）
             Quaternion baseRotation = Quaternion.identity;
             if (horizontalForward != Vector3.zero)
             {
                 baseRotation = Quaternion.LookRotation(horizontalForward);
             }
 
-            // 應用使用者的旋轉
             Quaternion userRotation = Quaternion.Euler(0, currentRotationY, 0);
             previewModel.transform.rotation = baseRotation * userRotation;
         }
         else
         {
-            // 沒有找到表面，保持在相機前方的水平位置
             Vector3 defaultPosition = cameraPosition + horizontalForward * dynamicForwardDistance;
-            defaultPosition.y = cameraPosition.y - defaultHeightOffset;
+            defaultPosition.y = cameraPosition.y - defaultHeightOffset + heightOffset;
             previewModel.transform.position = defaultPosition;
 
-            // 計算基礎旋轉（面向相機）
             Quaternion baseRotation = Quaternion.identity;
             if (horizontalForward != Vector3.zero)
             {
                 baseRotation = Quaternion.LookRotation(horizontalForward);
             }
 
-            // 應用使用者的旋轉
             Quaternion userRotation = Quaternion.Euler(0, currentRotationY, 0);
             previewModel.transform.rotation = baseRotation * userRotation;
         }
@@ -450,8 +410,8 @@ public class UIManager : MonoBehaviour
         // 計算Z軸縮放與1.0的差值
         float zScaleDifference = actualZScale - 1.0f;
 
-        // 根據您的需求：Z軸每多0.01，Forward distance也多0.01
-        // 這相當於 Z軸每多1.0，Forward distance多1.0
+        // 根據你的需求：Z軸每多0.01，Forward distance也多0.01
+        // 這樣當前 Z軸每多1.0，Forward distance多1.0
         dynamicForwardDistance = baseForwardDistance + zScaleDifference;
 
         // 確保距離不會太小
@@ -604,14 +564,14 @@ public class UIManager : MonoBehaviour
             finalModel = founctionManager.GenerateShapeWithParameters(
                 selectedShape,
                 finalScale,
-                gridSize,  // 使用統一的Grid值
+                gridSize,  // 使用格子的Grid值
                 false  // 標記為最終模型
             );
 
             // 設定最終材質
             if (finalModel != null)
             {
-                // 套用預覽物件的位置和旋轉
+                // 複製預覽物件的位置和旋轉
                 finalModel.transform.position = lastPreviewPosition;
                 finalModel.transform.rotation = lastPreviewRotation;
 
@@ -625,7 +585,7 @@ public class UIManager : MonoBehaviour
                     }
                 }
 
-                // 設定最終物件的圖層為 SculptObject
+                // 設定最終物件的層級為 SculptObject
                 int sculptLayer = LayerMask.NameToLayer("SculptObject");
                 if (sculptLayer != -1)
                 {
@@ -633,12 +593,12 @@ public class UIManager : MonoBehaviour
                 }
                 else
                 {
-                    Debug.LogWarning("SculptObject 圖層不存在，請在 Unity 中創建此圖層");
+                    Debug.LogWarning("SculptObject 層級不存在，請在 Unity 中創建此層級");
                 }
             }
         }
 
-        // 生成完畢後回到UIHome
+        // 生成完畢返回到UIHome
         if (SculptPanel2 != null) SculptPanel2.SetActive(false);
         if (UIHome != null) UIHome.SetActive(true);
         if (BackButton != null) BackButton.SetActive(false);
@@ -651,8 +611,9 @@ public class UIManager : MonoBehaviour
         // 重置所有參數到預設值
         mainScale = 1f;
         individualScale = Vector3.one;
-        gridSize = 10;  // 重置統一Grid值
+        gridSize = 10;  // 重置格子Grid值
         currentRotationY = 0f;
+        heightOffset = 0f;  // 重置高度偏移
 
         // 更新UI
         UpdateAllUIValues();
@@ -665,7 +626,7 @@ public class UIManager : MonoBehaviour
 
     void OnBackButtonClicked()
     {
-        // 根據當前面板狀態決定後退行為
+        // 根據當前面板狀態決定返回行為
         if (SculptPanel1 != null && SculptPanel1.activeInHierarchy)
         {
             // 從SculptPanel1回到UIHome
@@ -714,6 +675,21 @@ public class UIManager : MonoBehaviour
 
         // 更新預覽模型
         UpdatePreviewModel();
+    }
+
+    // 新增：高度滑桿事件處理
+    void OnHeightChanged(float value)
+    {
+        if (isUpdatingUI) return;
+
+        heightOffset = value;
+        if (HeightValue != null)
+        {
+            HeightValue.text = value.ToString("F2");
+        }
+
+        // 不需要重新生成模型，只需要更新位置
+        // UpdatePreviewModelPosition會在Update中自動調用
     }
 
     void OnScaleXSliderChanged(float value)
@@ -806,7 +782,7 @@ public class UIManager : MonoBehaviour
         }
     }
 
-    // 統一Grid輸入欄位處理
+    // 格子Grid輸入處理
     void OnGridInputChanged(string value)
     {
         if (isUpdatingUI) return;
@@ -814,7 +790,7 @@ public class UIManager : MonoBehaviour
         if (int.TryParse(value, out int result))
         {
             result = Mathf.Clamp(result, 1, 100);
-            gridSize = result;  // 設定統一Grid值
+            gridSize = result;  // 設定格子Grid值
 
             if (GridInputField != null) GridInputField.text = result.ToString();
             UpdatePreviewModel();
@@ -829,6 +805,7 @@ public class UIManager : MonoBehaviour
 
         // 更新滑桿
         if (MainScaleSlider != null) MainScaleSlider.value = mainScale;
+        if (HeightSlider != null) HeightSlider.value = heightOffset;
         if (ScaleXSlider != null) ScaleXSlider.value = individualScale.x;
         if (ScaleYSlider != null) ScaleYSlider.value = individualScale.y;
         if (ScaleZSlider != null) ScaleZSlider.value = individualScale.z;
@@ -837,6 +814,12 @@ public class UIManager : MonoBehaviour
         if (MainScaleValue != null)
         {
             MainScaleValue.text = $"{Mathf.RoundToInt(mainScale * 100)}%";
+        }
+
+        // 更新高度顯示
+        if (HeightValue != null)
+        {
+            HeightValue.text = heightOffset.ToString("F2");
         }
 
         // 更新輸入欄位
@@ -870,7 +853,7 @@ public class UIManager : MonoBehaviour
         }
     }
 
-    // === 舊版UI控制方法（保留向後兼容）===
+    // === 向後相容UI控制方法（保留向後兼容）===
 
     public void FunctionUISwitch()
     {
@@ -890,8 +873,6 @@ public class UIManager : MonoBehaviour
 
     public void Back()
     {
-        // 舊版後退功能
-        if (SculptContent != null) SculptContent.SetActive(false);
         if (UIHome != null) UIHome.SetActive(true);
         if (BackButton != null) BackButton.SetActive(false);
     }
@@ -923,21 +904,6 @@ public class UIManager : MonoBehaviour
         }
 
         founctionManager.ClearButton.SetActive(false);
-    }
-
-    private void OnInputFieldChanged(string value)
-    {
-        UpdateButtonInteractable();
-    }
-
-    private void UpdateButtonInteractable()
-    {
-        bool cubeScaleValid = IsValidInput(CubeScale != null ? CubeScale.text : "");
-        bool gridScaleValid = IsValidInput(GridScale != null ? GridScale.text : "");
-        bool shouldEnable = cubeScaleValid && gridScaleValid;
-
-        if (CubeInstantiate_A != null) CubeInstantiate_A.interactable = shouldEnable;
-        if (CubeInstantiate_B != null) CubeInstantiate_B.interactable = shouldEnable;
     }
 
     private bool IsValidInput(string input)

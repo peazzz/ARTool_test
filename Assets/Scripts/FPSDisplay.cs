@@ -12,7 +12,7 @@ public class FPSDisplay : MonoBehaviour
     void Awake()
     {
         QualitySettings.vSyncCount = 0;
-        Application.targetFrameRate = 60;
+        Application.targetFrameRate = 90;
         arSession = FindObjectOfType<ARSession>();
     }
 
@@ -22,7 +22,7 @@ public class FPSDisplay : MonoBehaviour
         {
             arSession.matchFrameRateRequested = false;
         }
-        Application.targetFrameRate = 60;
+        Application.targetFrameRate = 90;
     }
 
     void Update()
