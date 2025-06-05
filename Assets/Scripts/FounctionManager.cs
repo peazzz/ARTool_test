@@ -40,8 +40,8 @@ public class FounctionManager : MonoBehaviour
         Vector3 spawnPosition = GetSpawnPosition();
         GameObject newCarvingSystem = Instantiate(cubeCarvingSystemPrefab, spawnPosition, Quaternion.identity);
 
-        if (parentObject != null)
-            newCarvingSystem.transform.SetParent(parentObject);
+        //if (parentObject != null)
+        //    newCarvingSystem.transform.SetParent(parentObject);
 
         // ¿≥•Œ¡Y©Ò
         newCarvingSystem.transform.localScale = scale;

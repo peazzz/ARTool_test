@@ -22,9 +22,11 @@ public class UIManager : MonoBehaviour
 
     [Header("導航網格設定")]
     [SerializeField] private LightshipNavMeshManager navMeshManager; // 導航網格管理器的引用
-    [SerializeField] private float forwardDistance = 1.5f;           // 相機前方距離
+    [SerializeField] private float baseForwardDistance = 1.5f;           // 相機前方距離
     [SerializeField] private float downwardCheckDistance = 10f;      // 向下檢測距離
+    [SerializeField] private float defaultHeightOffset = 0.5f;
     private LightshipNavMeshAgent previewAgent;                      // 預覽模型的導航代理
+    private float dynamicForwardDistance;                            // 動態計算的前方距離
 
     [Header("舊版Sculpt - 保留向後兼容")]
     public GameObject SculptContent;
@@ -77,6 +79,22 @@ public class UIManager : MonoBehaviour
     private float lastUpdateTime = 0f;           // 用於限制更新頻率
     private const float updateInterval = 0.1f;   // 更新間隔
 
+    // 儲存預覽物件的最後 Transform
+    private Vector3 lastPreviewPosition;
+    private Quaternion lastPreviewRotation;
+
+    [Header("旋轉控制設定")]
+    [SerializeField] private float rotationSpeed = 0.5f;        // 旋轉速度
+    [SerializeField] private bool allowRotationControl = true;   // 是否允許旋轉控制
+
+    // 旋轉控制狀態
+    private bool isRotating = false;
+    private Vector2 lastTouchPosition;
+    private float currentRotationY = 0f;  // 當前Y軸旋轉角度
+
+    [Header("除錯設定")]
+    [SerializeField] private bool showDebugInfo = false;
+
     void Start()
     {
         UI_on = false;
@@ -94,6 +112,8 @@ public class UIManager : MonoBehaviour
 
         // 舊版功能保留
         SetupLegacyEvents();
+
+        dynamicForwardDistance = baseForwardDistance;
     }
 
     void Update()
@@ -103,6 +123,11 @@ public class UIManager : MonoBehaviour
         {
             lastUpdateTime = Time.time;
             UpdatePreviewModelPosition();
+        }
+
+        if (previewModel != null && allowRotationControl && SculptPanel2 != null && SculptPanel2.activeInHierarchy)
+        {
+            HandleRotationInput();
         }
     }
 
@@ -258,6 +283,7 @@ public class UIManager : MonoBehaviour
     void OnShapeSelected(VoxelShape shape)
     {
         selectedShape = shape;
+        currentRotationY = 0f;
 
         // SculptPanel1 -> SculptPanel2
         if (SculptPanel1 != null) SculptPanel1.SetActive(false);
@@ -332,6 +358,8 @@ public class UIManager : MonoBehaviour
                 //     pathRenderer = previewModel.AddComponent<LightshipNavMeshAgentPathRenderer>();
                 //     pathRenderer.enabled = false; // 預設關閉路徑顯示
                 // }
+
+                CalculateDynamicForwardDistance();
             }
         }
     }
@@ -343,7 +371,7 @@ public class UIManager : MonoBehaviour
         Vector3 cameraPosition = Camera.main.transform.position;
         Vector3 cameraForward = Camera.main.transform.forward;
 
-        // 將相機前方向量投影到水平面（移除Y分量）
+        // 將相機前方向量投影到水平面
         Vector3 horizontalForward = new Vector3(cameraForward.x, 0, cameraForward.z).normalized;
 
         // 如果相機朝向過於垂直，使用預設前方
@@ -353,44 +381,171 @@ public class UIManager : MonoBehaviour
         }
 
         // 從相機前方位置向下射線
-        Vector3 rayOrigin = cameraPosition + horizontalForward * forwardDistance;
+        Vector3 rayOrigin = cameraPosition + horizontalForward * dynamicForwardDistance;
         Ray ray = new Ray(rayOrigin, Vector3.down);
 
+        // 創建圖層遮罩，排除 PreviewObject 圖層
+        int previewLayer = LayerMask.NameToLayer("PreviewObject");
+        int layerMask = ~(1 << previewLayer); // 排除預覽物件圖層
+
         RaycastHit hit;
-        // if (Physics.Raycast(ray, out hit, downwardCheckDistance))
-        // {
-        //     // 找到表面，將預覽模型放置在該位置
-        //     previewModel.transform.position = hit.point;
-        // 
-        //     // 讓模型面向相機的水平方向
-        //     if (horizontalForward != Vector3.zero)
-        //     {
-        //         previewModel.transform.rotation = Quaternion.LookRotation(horizontalForward);
-        //     }
-        // 
-        //     // 如果有 NavMeshAgent，設定目標位置
-        //     if (previewAgent != null)
-        //     {
-        //         previewAgent.SetDestination(hit.point);
-        //     }
-        // }
-        // else
-        // {
-            // 沒有找到表面，保持在相機前方
-            Vector3 defaultPosition = cameraPosition + cameraForward * forwardDistance;
-            defaultPosition.y = cameraPosition.y - 0.5f; // 稍微降低高度
+        if (Physics.Raycast(ray, out hit, downwardCheckDistance, layerMask))
+        {
+            // 找到表面
+            Vector3 targetPosition = hit.point;
+
+            // 獲取物件的邊界框來計算正確的高度偏移
+            Renderer renderer = previewModel.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                UnityEngine.Bounds bounds = renderer.bounds;  // 明確使用 UnityEngine.Bounds
+                float halfHeight = bounds.extents.y; // 物件高度的一半
+
+                // 將物件提升半個高度，使底部貼齊地面
+                targetPosition.y += halfHeight;
+            }
+
+            // 找到表面，將預覽模型放置在該位置
+            previewModel.transform.position = targetPosition;
+
+            // 計算基礎旋轉（面向相機）
+            Quaternion baseRotation = Quaternion.identity;
+            if (horizontalForward != Vector3.zero)
+            {
+                baseRotation = Quaternion.LookRotation(horizontalForward);
+            }
+
+            // 應用使用者的旋轉
+            Quaternion userRotation = Quaternion.Euler(0, currentRotationY, 0);
+            previewModel.transform.rotation = baseRotation * userRotation;
+        }
+        else
+        {
+            // 沒有找到表面，保持在相機前方的水平位置
+            Vector3 defaultPosition = cameraPosition + horizontalForward * dynamicForwardDistance;
+            defaultPosition.y = cameraPosition.y - defaultHeightOffset;
             previewModel.transform.position = defaultPosition;
 
-            // 面向相機前方
-            if (cameraForward != Vector3.zero)
+            // 計算基礎旋轉（面向相機）
+            Quaternion baseRotation = Quaternion.identity;
+            if (horizontalForward != Vector3.zero)
             {
-                Vector3 lookDirection = new Vector3(cameraForward.x, 0, cameraForward.z);
-                if (lookDirection != Vector3.zero)
-                {
-                    previewModel.transform.rotation = Quaternion.LookRotation(lookDirection);
-                }
+                baseRotation = Quaternion.LookRotation(horizontalForward);
             }
-        // }
+
+            // 應用使用者的旋轉
+            Quaternion userRotation = Quaternion.Euler(0, currentRotationY, 0);
+            previewModel.transform.rotation = baseRotation * userRotation;
+        }
+
+        lastPreviewPosition = previewModel.transform.position;
+        lastPreviewRotation = previewModel.transform.rotation;
+    }
+
+    void CalculateDynamicForwardDistance()
+    {
+        // 計算實際的Z軸縮放值
+        float actualZScale = mainScale * individualScale.z;
+
+        // 計算Z軸縮放與1.0的差值
+        float zScaleDifference = actualZScale - 1.0f;
+
+        // 根據您的需求：Z軸每多0.01，Forward distance也多0.01
+        // 這相當於 Z軸每多1.0，Forward distance多1.0
+        dynamicForwardDistance = baseForwardDistance + zScaleDifference;
+
+        // 確保距離不會太小
+        dynamicForwardDistance = Mathf.Max(dynamicForwardDistance, 0.5f);
+
+        if (showDebugInfo)
+        {
+            Debug.Log($"動態前方距離: {dynamicForwardDistance} (Z軸縮放: {actualZScale})");
+        }
+    }
+
+    void HandleRotationInput()
+    {
+        // 檢查是否點擊到UI元素
+        if (IsPointerOverUIElement())
+        {
+            isRotating = false;
+            return;
+        }
+
+#if UNITY_EDITOR
+    // 編輯器中使用滑鼠控制
+    if (Input.GetMouseButtonDown(0))
+    {
+        isRotating = true;
+        lastTouchPosition = Input.mousePosition;
+    }
+    else if (Input.GetMouseButton(0) && isRotating)
+    {
+        Vector2 currentMousePosition = Input.mousePosition;
+        Vector2 deltaPosition = currentMousePosition - lastTouchPosition;
+        
+        // 根據水平滑動旋轉物件
+        float rotationDelta = deltaPosition.x * rotationSpeed;
+        currentRotationY -= rotationDelta;
+        
+        lastTouchPosition = currentMousePosition;
+    }
+    else if (Input.GetMouseButtonUp(0))
+    {
+        isRotating = false;
+    }
+#else
+        // 手機上使用觸控控制
+        if (Input.touchCount == 1)
+        {
+            Touch touch = Input.GetTouch(0);
+
+            switch (touch.phase)
+            {
+                case TouchPhase.Began:
+                    isRotating = true;
+                    lastTouchPosition = touch.position;
+                    break;
+
+                case TouchPhase.Moved:
+                    if (isRotating)
+                    {
+                        Vector2 deltaPosition = touch.position - lastTouchPosition;
+
+                        // 根據水平滑動旋轉物件
+                        float rotationDelta = deltaPosition.x * rotationSpeed;
+                        currentRotationY -= rotationDelta;
+
+                        lastTouchPosition = touch.position;
+                    }
+                    break;
+
+                case TouchPhase.Ended:
+                case TouchPhase.Canceled:
+                    isRotating = false;
+                    break;
+            }
+        }
+#endif
+    }
+
+    // 檢查是否點擊到UI元素
+    bool IsPointerOverUIElement()
+    {
+        // 檢查滑鼠是否在UI上
+        if (UnityEngine.EventSystems.EventSystem.current != null)
+        {
+#if UNITY_EDITOR
+        return UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
+#else
+            // 手機上檢查第一個觸控點
+            if (Input.touchCount > 0)
+            {
+                return UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject(Input.GetTouch(0).fingerId);
+            }
+#endif
+        }
+        return false;
     }
 
     void UpdatePreviewModel()
@@ -413,6 +568,8 @@ public class UIManager : MonoBehaviour
         {
             carvingSystem.SetParameters(1f, gridSize, selectedShape);
         }
+
+        CalculateDynamicForwardDistance();
     }
 
     void OnGenerateButtonClicked()
@@ -420,6 +577,9 @@ public class UIManager : MonoBehaviour
         // 刪除預覽模型
         if (previewModel != null)
         {
+            lastPreviewPosition = previewModel.transform.position;
+            lastPreviewRotation = previewModel.transform.rotation;
+
             Destroy(previewModel);
             previewModel = null;
         }
@@ -449,12 +609,20 @@ public class UIManager : MonoBehaviour
             );
 
             // 設定最終材質
-            if (finalModel != null && finalMaterial != null)
+            if (finalModel != null)
             {
-                MeshRenderer renderer = finalModel.GetComponent<MeshRenderer>();
-                if (renderer != null)
+                // 套用預覽物件的位置和旋轉
+                finalModel.transform.position = lastPreviewPosition;
+                finalModel.transform.rotation = lastPreviewRotation;
+
+                // 設定最終材質
+                if (finalMaterial != null)
                 {
-                    renderer.material = finalMaterial;
+                    MeshRenderer renderer = finalModel.GetComponent<MeshRenderer>();
+                    if (renderer != null)
+                    {
+                        renderer.material = finalMaterial;
+                    }
                 }
 
                 // 設定最終物件的圖層為 SculptObject
@@ -475,7 +643,7 @@ public class UIManager : MonoBehaviour
         if (UIHome != null) UIHome.SetActive(true);
         if (BackButton != null) BackButton.SetActive(false);
 
-        Debug.Log($"生成最終模型完成: {selectedShape}");
+        Debug.Log($"生成最終模型完成: {selectedShape}，位置: {lastPreviewPosition}");
     }
 
     void OnResetButtonClicked()
@@ -484,6 +652,7 @@ public class UIManager : MonoBehaviour
         mainScale = 1f;
         individualScale = Vector3.one;
         gridSize = 10;  // 重置統一Grid值
+        currentRotationY = 0f;
 
         // 更新UI
         UpdateAllUIValues();

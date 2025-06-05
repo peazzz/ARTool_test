@@ -6000,9 +6000,10 @@ MonoBehaviour:
   SculptPanel2: {fileID: 1572643847}
   previewMaterial: {fileID: 2100000, guid: b3a7ab6439a9d2a42a21bf82ecbb0a9a, type: 2}
   finalMaterial: {fileID: 2100000, guid: 8ee1e6a834801b945b4c1d331b786945, type: 2}
-  navMeshManager: {fileID: 0}
-  forwardDistance: 1.5
+  navMeshManager: {fileID: 2032460438}
+  baseForwardDistance: 1.5
   downwardCheckDistance: 10
+  defaultHeightOffset: 0.5
   SculptContent: {fileID: 1697789599}
   CubeScale: {fileID: 2318948}
   GridScale: {fileID: 999643366}
@@ -6024,6 +6025,7 @@ MonoBehaviour:
   GenerateButton: {fileID: 1307510831}
   ResetButton: {fileID: 1158047833}
   founctionManager: {fileID: 1342327334}
+  showDebugInfo: 0
 --- !u!4 &1342327332
 Transform:
   m_ObjectHideFlags: 0
