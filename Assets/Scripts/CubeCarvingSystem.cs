@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -8,6 +9,27 @@ public enum VoxelShape
     Sphere,    // 圓體
     Capsule,   // 膠囊體
     Cylinder   // 圓柱體
+}
+
+public struct ModelData
+{
+    public string filename;
+    public string shapeType;
+    public Vector3 position;
+    public Vector3 rotation;
+    public Vector3 scale;
+    public string timestamp;
+
+    // 添加構造函數方便創建
+    public ModelData(string filename, string shapeType, Vector3 position, Vector3 rotation, Vector3 scale)
+    {
+        this.filename = filename;
+        this.shapeType = shapeType;
+        this.position = position;
+        this.rotation = rotation;
+        this.scale = scale;
+        this.timestamp = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+    }
 }
 
 public class CubeCarvingSystem : MonoBehaviour
@@ -324,9 +346,6 @@ public class CubeCarvingSystem : MonoBehaviour
                     {
                         voxels[voxelPos.x, voxelPos.y, voxelPos.z] = false;
                         modified = true;
-
-                        if (showDebugInfo)
-                            Debug.Log($"Carved voxel at ({voxelPos.x}, {voxelPos.y}, {voxelPos.z})");
                     }
                 }
             }
@@ -364,7 +383,7 @@ public class CubeCarvingSystem : MonoBehaviour
             return;
         }
 
-        // 清空重用容器（不創建新的）
+        // 清空重複使用容器（不創建新的）
         reusableVertices.Clear();
         reusableTriangles.Clear();
         reusableNormals.Clear();
@@ -408,19 +427,45 @@ public class CubeCarvingSystem : MonoBehaviour
         {
             meshFilter.mesh = mesh;
 
-            // 優化：降低 Collider 更新頻率
-            if (meshCollider != null && Time.frameCount % 3 == 0) // 每3幀更新一次
+            // 修復 MeshCollider - 確保正確設定 Mesh
+            if (meshCollider != null && reusableVertices.Count > 0)
             {
+                // 重要：需要先清空再設定新的 mesh
                 meshCollider.sharedMesh = null;
-                meshCollider.sharedMesh = mesh;
+
+                // 等待一幀讓物理系統處理
+                StartCoroutine(UpdateMeshColliderNextFrame());
             }
 
             if (showDebugInfo)
-                Debug.Log($"Optimized mesh generated with {reusableVertices.Count} vertices");
+                Debug.Log($"優化後的 mesh 已生成，包含 {reusableVertices.Count} 個頂點");
         }
         catch (System.Exception e)
         {
-            Debug.LogError($"Error setting mesh: {e.Message}");
+            Debug.LogError($"設定 mesh 時發生錯誤: {e.Message}");
+        }
+    }
+
+    // 新增協程來延遲更新 MeshCollider
+    private IEnumerator UpdateMeshColliderNextFrame()
+    {
+        yield return null; // 等待一幀
+
+        if (meshCollider != null && mesh != null)
+        {
+            meshCollider.sharedMesh = mesh;
+
+            // 確保 MeshCollider 不是 Trigger（除非你特意要設為 Trigger）
+            meshCollider.isTrigger = false;
+
+            // 對於複雜的 mesh，可能需要設為 convex
+            // 但這會簡化碰撞形狀，你可以根據需要調整
+            // meshCollider.convex = true;
+
+            if (showDebugInfo)
+            {
+                Debug.Log($"MeshCollider 已更新，Mesh: {mesh.name}, 頂點數: {mesh.vertexCount}");
+            }
         }
     }
 
@@ -556,6 +601,9 @@ public class CubeCarvingSystem : MonoBehaviour
         InitializeVoxels();
         GenerateMesh();
 
+        // 通知 ModelStat 更新數據
+        NotifyModelStatUpdate();
+
         if (showDebugInfo)
             Debug.Log($"CubeCarvingSystem參數已更新 - CubeSize: {cubeSize}, GridSize: {gridSize}, Shape: {shapeType}");
     }
@@ -588,5 +636,40 @@ public class CubeCarvingSystem : MonoBehaviour
         InitializeVoxels();
         GenerateMesh();
         Debug.Log($"體素已重置為初始{shapeType}形狀");
+    }
+
+    /// <summary>
+    /// 獲取當前模型的完整數據
+    /// </summary>
+    /// <returns>包含當前模型所有信息的 ModelData</returns>
+    public ModelData GetCurrentModelData()
+    {
+        return new ModelData
+        {
+            filename = gameObject.name,
+            shapeType = shapeType.ToString(),
+            position = transform.position,
+            rotation = transform.eulerAngles,
+            scale = transform.localScale,
+            timestamp = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+        };
+    }
+
+    /// <summary>
+    /// 通知 ModelStat 組件更新數據
+    /// </summary>
+    public void NotifyModelStatUpdate()
+    {
+        ModelStat modelStat = GetComponent<ModelStat>();
+        if (modelStat != null)
+        {
+            ModelData currentData = GetCurrentModelData();
+            modelStat.SetModelData(currentData);
+
+            if (showDebugInfo)
+            {
+                Debug.Log($"已通知 ModelStat 更新數據: {gameObject.name}");
+            }
+        }
     }
 }
