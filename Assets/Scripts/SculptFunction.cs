@@ -6,61 +6,57 @@ using Niantic.Lightship.AR.NavigationMesh;
 
 public class SculptFunction : MonoBehaviour
 {
-    [Header("基本設定")]
+    [Header("BasicSetting")]
     public GameObject ClearButton;
     public GameObject cubeCarvingSystemPrefab;
     public Material previewMaterial, finalMaterial;
-    public Material selectedMaterial;  // 選中物件的發光材質
+    public Material selectedMaterial;
     public Transform parentObject;
     public Camera targetCamera;
     public UIManager uiManager;
 
-    [Header("導航網格設定")]
+    [Header("NavMeshSetting")]
     [SerializeField] private LightshipNavMeshManager navMeshManager;
     [SerializeField] private float baseForwardDistance = 1.5f;
     [SerializeField] private float downwardCheckDistance = 10f;
     [SerializeField] private float defaultHeightOffset = 0.5f;
 
-    [Header("形狀選擇按鈕")]
+    [Header("ShapeButton")]
     public Button ShapeButton_Cube, ShapeButton_Sphere, ShapeButton_Capsule, ShapeButton_Cylinder;
 
-    [Header("主要控制 UI")]
+    [Header("MainControlUI")]
     public Slider MainScaleSlider, HeightSlider;
     public Text MainScaleValue, HeightValue;
     public GameObject PositionLockButton;
 
-    // 縮放頁面
     public Slider ScaleXSlider, ScaleYSlider, ScaleZSlider;
     public InputField ScaleXInputField, ScaleYInputField, ScaleZInputField;
 
-    // 旋轉頁面
     public Slider RotationXSlider, RotationYSlider, RotationZSlider;
     public InputField RotationXInputField, RotationYInputField, RotationZInputField;
 
-    // 其他頁面
     public InputField GridInputField;
     public Button GenerateButton, ResetButton;
     public FlexibleColorPicker fcp;
     public Material ColorfulMaterial;
 
-    [Header("預設參數")]
+    [Header("defaultValue")]
     public float defaultCubeSize = 1f;
     public int defaultGridSize = 10;
 
-    [Header("旋轉控制設定")]
+    [Header("RotationSetting")]
     [SerializeField] private float rotationSpeed = 0.5f;
     [SerializeField] private bool allowRotationControl = true;
 
-    [Header("性能優化")]
+    [Header("Debug")]
     [SerializeField] private float raycastCacheTime = 0.15f;
     [SerializeField] private bool showDebugInfo = false;
 
-    // 私有變數
     private VoxelShape selectedShape;
     private GameObject previewModel, finalModel;
-    private GameObject currentSelectedObject;  // 當前選中的物件
-    private Material originalMaterial;         // 存儲原始材質
-    private bool isEditingExistingObject = false; // 是否正在編輯現有物件
+    private GameObject currentSelectedObject;
+    private Material originalMaterial;
+    private bool isEditingExistingObject = false;
     private float mainScale = 1f, heightOffset = 0f, dynamicForwardDistance, currentRotationY = 0f;
     private Vector3 individualScale = Vector3.one;
     private Vector3 modelRotation = Vector3.zero;
@@ -76,6 +72,10 @@ public class SculptFunction : MonoBehaviour
     private bool positionLock;
     private Vector3 lockedPosition;
     private int originalLayer;
+
+    private Vector3 originalObjectScale;
+    private Vector3 originalObjectRotation;
+    private Vector3 originalObjectPosition;
 
     void Start()
     {
@@ -96,7 +96,6 @@ public class SculptFunction : MonoBehaviour
             CheckForObjectSelection();
         }
 
-        // 預覽模式或編輯模式的位置更新 - 修正這裡的條件
         if ((previewModel != null || (isEditingExistingObject && currentSelectedObject != null)) &&
             Time.time - lastUpdateTime > updateInterval)
         {
@@ -104,7 +103,6 @@ public class SculptFunction : MonoBehaviour
             UpdatePreviewModelPosition();
         }
 
-        // 旋轉控制（預覽模式或編輯模式）
         if ((previewModel != null || isEditingExistingObject) && allowRotationControl &&
             uiManager.SculptPanel2 != null && uiManager.SculptPanel2.activeInHierarchy)
         {
@@ -112,43 +110,27 @@ public class SculptFunction : MonoBehaviour
         }
     }
 
-    #region 物件選取和編輯系統
+    #region Select&Edit
     void CheckForObjectSelection()
     {
         Ray ray = targetCamera.ScreenPointToRay(Input.mousePosition);
         RaycastHit hit;
 
-        // 修復：使用更寬鬆的 LayerMask 檢測
         int layerMask = (1 << LayerMask.NameToLayer("SculptObject")) |
                     (1 << LayerMask.NameToLayer("PreviewObject"));
 
-        // 如果 SculptObject 層不存在，使用默認層
         if (LayerMask.NameToLayer("SculptObject") == -1 ||
         LayerMask.NameToLayer("PreviewObject") == -1)
         {
             layerMask = ~0;
         }
 
-        // 增加檢測距離
         float maxDistance = 100f;
-
-        if (showDebugInfo)
-        {
-            // 顯示射線用於調試
-            Debug.DrawRay(ray.origin, ray.direction * maxDistance, Color.red, 1f);
-            Debug.Log($"執行 Raycast - Origin: {ray.origin}, Direction: {ray.direction}");
-        }
 
         if (Physics.Raycast(ray, out hit, maxDistance, layerMask))
         {
             GameObject hitObject = hit.collider.gameObject;
 
-            if (showDebugInfo)
-            {
-                Debug.Log($"Raycast 命中物件: {hitObject.name}, Layer: {hitObject.layer}, Distance: {hit.distance}");
-            }
-
-            // 檢查是否有 CubeCarvingSystem 組件
             CubeCarvingSystem carvingSystem = hitObject.GetComponent<CubeCarvingSystem>();
             if (carvingSystem == null)
             {
@@ -159,45 +141,25 @@ public class SculptFunction : MonoBehaviour
             {
                 SelectObject(carvingSystem.gameObject);
             }
-            else
-            {
-                if (showDebugInfo)
-                {
-                    Debug.Log($"命中的物件 {hitObject.name} 沒有 CubeCarvingSystem 組件");
-                }
-            }
-        }
-        else
-        {
-            if (showDebugInfo)
-            {
-                Debug.Log("Raycast 沒有命中任何物件");
-            }
         }
     }
 
     public void SelectObject(GameObject obj)
     {
-        // 取消之前的選擇
+        ClearButton.SetActive(false);
         DeselectCurrentObject();
-
-        // 選擇新物件
         currentSelectedObject = obj;
         isEditingExistingObject = true;
-
-        // 設定發光效果
         SetObjectGlow(currentSelectedObject, true);
-
         originalLayer = currentSelectedObject.layer;
         SetLayerRecursively(currentSelectedObject, LayerMask.NameToLayer("PreviewObject"));
-
-        // 從物件讀取當前參數
         LoadParametersFromObject(currentSelectedObject);
-
-        // 計算該物件的動態前進距離
         CalculateDynamicForwardDistanceForObject(currentSelectedObject);
 
-        // 推斷物件的形狀類型
+        originalObjectScale = currentSelectedObject.transform.localScale;
+        originalObjectRotation = currentSelectedObject.transform.eulerAngles;
+        originalObjectPosition = currentSelectedObject.transform.position;
+
         CubeCarvingSystem carvingSystem = currentSelectedObject.GetComponent<CubeCarvingSystem>();
         if (carvingSystem != null)
         {
@@ -209,13 +171,11 @@ public class SculptFunction : MonoBehaviour
             else selectedShape = VoxelShape.Cube;
         }
 
-        // 切換到編輯面板
         uiManager.SculptPanel1?.SetActive(false);
         uiManager.SculptPanel2?.SetActive(true);
         uiManager.UIHome?.SetActive(false);
         uiManager.BackButton?.SetActive(true);
 
-        // 更新 UI 顯示
         UpdateAllUIValues();
         SetDefaultPositionLockState(true);
     }
@@ -238,21 +198,14 @@ public class SculptFunction : MonoBehaviour
         {
             if (glow)
             {
-                // 保存原始材質
                 originalMaterial = renderer.material;
-                // 設定發光材質
                 if (selectedMaterial != null)
                 {
                     renderer.material = selectedMaterial;
                 }
-                else
-                {
-                    Debug.LogWarning("selectedMaterial 未設定，無法顯示發光效果");
-                }
             }
             else
             {
-                // 恢復原始材質
                 if (originalMaterial != null)
                 {
                     renderer.material = originalMaterial;
@@ -263,13 +216,9 @@ public class SculptFunction : MonoBehaviour
 
     void LoadParametersFromObject(GameObject obj)
     {
-        // 載入縮放參數
         Vector3 scale = obj.transform.localScale;
-
-        // 計算主縮放（使用最大值）
         mainScale = Mathf.Max(scale.x, scale.y, scale.z);
 
-        // 計算個別軸縮放比例
         if (mainScale > 0)
         {
             individualScale = new Vector3(
@@ -284,7 +233,6 @@ public class SculptFunction : MonoBehaviour
             mainScale = 1f;
         }
 
-        // 載入旋轉參數
         Vector3 eulerAngles = obj.transform.eulerAngles;
         modelRotation = new Vector3(
             NormalizeAngle(eulerAngles.x),
@@ -292,35 +240,21 @@ public class SculptFunction : MonoBehaviour
             NormalizeAngle(eulerAngles.z)
         );
         currentRotationY = modelRotation.y;
-
-        // 載入 Grid 參數（但不會用於重新生成 mesh）
         gridSize = defaultGridSize;
-
-        // 重置高度偏移
         heightOffset = 0f;
 
-        // 檢查物件是否已被雕刻
         bool isCarved = IsObjectCarved(obj);
-        if (isCarved)
-        {
-            Debug.Log($"檢測到 {obj.name} 已被雕刻，編輯時將保持原有 mesh");
-        }
-
-        Debug.Log($"載入物件參數 - Scale: {scale}, MainScale: {mainScale}, IndividualScale: {individualScale}, Rotation: {modelRotation}");
-        Debug.Log($"物件雕刻狀態: {(isCarved ? "已雕刻" : "未雕刻")}");
     }
     #endregion
 
-    #region 按鈕事件設定
+    #region Event&Value
     void SetupAllButtonEvents()
     {
-        // 形狀選擇按鈕
         ShapeButton_Cube?.onClick.AddListener(() => OnShapeSelected(VoxelShape.Cube));
         ShapeButton_Sphere?.onClick.AddListener(() => OnShapeSelected(VoxelShape.Sphere));
         ShapeButton_Capsule?.onClick.AddListener(() => OnShapeSelected(VoxelShape.Capsule));
         ShapeButton_Cylinder?.onClick.AddListener(() => OnShapeSelected(VoxelShape.Cylinder));
 
-        // 控制按鈕
         GenerateButton?.onClick.AddListener(OnGenerateButtonClicked);
         ResetButton?.onClick.AddListener(OnResetButtonClicked);
         uiManager.BackButton?.GetComponent<Button>().onClick.AddListener(OnBackButtonClicked);
@@ -329,26 +263,21 @@ public class SculptFunction : MonoBehaviour
 
     void SetupSliderAndInputEvents()
     {
-        // 主縮放滑桿
         SetupSlider(MainScaleSlider, 0.1f, 3f, 1f, OnMainScaleChanged);
         SetupSlider(HeightSlider, -1f, 1f, 0f, OnHeightChanged);
 
-        // 個別軸滑桿
         SetupSlider(ScaleXSlider, 0.1f, 3f, 1f, OnScaleXSliderChanged);
         SetupSlider(ScaleYSlider, 0.1f, 3f, 1f, OnScaleYSliderChanged);
         SetupSlider(ScaleZSlider, 0.1f, 3f, 1f, OnScaleZSliderChanged);
 
-        // 旋轉滑桿
         SetupSlider(RotationXSlider, 0f, 360f, 0f, OnRotationXSliderChanged);
         SetupSlider(RotationYSlider, 0f, 360f, 0f, OnRotationYSliderChanged);
         SetupSlider(RotationZSlider, 0f, 360f, 0f, OnRotationZSliderChanged);
 
-        // 縮放輸入欄位
         SetupInputField(ScaleXInputField, "1.00", OnScaleXInputChanged);
         SetupInputField(ScaleYInputField, "1.00", OnScaleYInputChanged);
         SetupInputField(ScaleZInputField, "1.00", OnScaleZInputChanged);
 
-        // 旋轉輸入欄位
         SetupInputField(RotationXInputField, "0", OnRotationXInputChanged);
         SetupInputField(RotationYInputField, "0", OnRotationYInputChanged);
         SetupInputField(RotationZInputField, "0", OnRotationZInputChanged);
@@ -378,15 +307,15 @@ public class SculptFunction : MonoBehaviour
     }
     #endregion
 
-    #region 形狀選擇和模型生成
+    #region Shape&Generate
     void OnShapeSelected(VoxelShape shape)
     {
+        ClearButton.SetActive(false);
         selectedShape = shape;
         currentRotationY = 0f;
         modelRotation = Vector3.zero;
-        isEditingExistingObject = false; // 確保是新建模式
+        isEditingExistingObject = false;
 
-        // 切換面板
         uiManager.SculptPanel1?.SetActive(false);
         uiManager.SculptPanel2?.SetActive(true);
         uiManager.FunctionUISwitch();
@@ -419,7 +348,6 @@ public class SculptFunction : MonoBehaviour
     {
         if (cubeCarvingSystemPrefab == null)
         {
-            Debug.LogError("CubeCarvingSystem預製物件未設定!");
             return null;
         }
 
@@ -428,7 +356,6 @@ public class SculptFunction : MonoBehaviour
         newCarvingSystem.transform.localScale = scale;
         newCarvingSystem.name = $"CubeCarvingSystem_{shapeType}{(isPreview ? "_Preview" : "_Final")}";
 
-        // 設定 CubeCarvingSystem 參數
         CubeCarvingSystem carvingSystem = newCarvingSystem.GetComponent<CubeCarvingSystem>();
         if (carvingSystem != null)
         {
@@ -436,11 +363,9 @@ public class SculptFunction : MonoBehaviour
         }
         else
         {
-            Debug.LogError("預製物上找不到CubeCarvingSystem組件!");
             return newCarvingSystem;
         }
 
-        // 設定材質和層級
         if (isPreview)
         {
             SetMaterialAndLayer(newCarvingSystem, previewMaterial, "PreviewObject");
@@ -448,45 +373,24 @@ public class SculptFunction : MonoBehaviour
         else
         {
             SetMaterialAndLayer(newCarvingSystem, finalMaterial, "SculptObject");
-
-            // 等待 MeshCollider 完全設定後再掛載 ModelStat
             StartCoroutine(InitializeModelStatAfterMesh(newCarvingSystem, shapeType));
-
             ClearButton.SetActive(true);
         }
 
-        Debug.Log($"生成{(isPreview ? "預覽" : "最終")}{shapeType}模型 - Scale: {scale}, GridSize: {gridSize}");
         return newCarvingSystem;
     }
 
     private IEnumerator InitializeModelStatAfterMesh(GameObject gameObject, VoxelShape shapeType)
     {
-        // 等待兩幀確保 Mesh 和 MeshCollider 都完全設定
         yield return null;
         yield return null;
 
-        Debug.Log("開始為最終模型掛載 ModelStat 組件...");
-
-        // 檢查 MeshCollider 是否正確設定
-        MeshCollider meshCollider = gameObject.GetComponent<MeshCollider>();
-        if (meshCollider != null && meshCollider.sharedMesh != null)
-        {
-            Debug.Log($"MeshCollider 已正確設定，Mesh: {meshCollider.sharedMesh.name}, 頂點數: {meshCollider.sharedMesh.vertexCount}");
-        }
-        else
-        {
-            Debug.LogWarning("MeshCollider 或其 Mesh 未正確設定，這可能導致無法點擊物件");
-        }
-
-        // 添加 ModelStat 組件
         ModelStat modelStat = gameObject.GetComponent<ModelStat>();
         if (modelStat == null)
         {
             modelStat = gameObject.AddComponent<ModelStat>();
-            Debug.Log("成功添加 ModelStat 組件");
         }
 
-        // 創建並設定模型數據
         ModelData modelData = new ModelData
         {
             filename = gameObject.name,
@@ -498,16 +402,12 @@ public class SculptFunction : MonoBehaviour
         };
 
         modelStat.SetModelData(modelData);
-
-        Debug.Log($"已為最終模型 {gameObject.name} 設定 ModelStat 數據");
     }
 
-    // 新增協程來延遲初始化 ModelStat
     private IEnumerator InitializeModelStatNextFrame(ModelStat modelStat, GameObject gameObject, VoxelShape shapeType)
     {
-        yield return null; // 等待一幀
+        yield return null;
 
-        // 創建並設定模型數據
         ModelData modelData = new ModelData
         {
             filename = gameObject.name,
@@ -519,14 +419,6 @@ public class SculptFunction : MonoBehaviour
         };
 
         modelStat.SetModelData(modelData);
-
-        Debug.Log($"已為最終模型 {gameObject.name} 設定 ModelStat 數據:");
-        Debug.Log($"  文件名: {modelData.filename}");
-        Debug.Log($"  形狀: {modelData.shapeType}");
-        Debug.Log($"  位置: {modelData.position}");
-        Debug.Log($"  旋轉: {modelData.rotation}");
-        Debug.Log($"  縮放: {modelData.scale}");
-        Debug.Log($"  時間: {modelData.timestamp}");
     }
 
 
@@ -546,83 +438,57 @@ public class SculptFunction : MonoBehaviour
             {
                 renderer.material = material;
             }
-            else
-            {
-                Debug.LogWarning($"物件 {obj.name} 沒有 MeshRenderer 組件");
-            }
         }
 
-        // 確保層級存在
         int layer = LayerMask.NameToLayer(layerName);
         if (layer != -1)
         {
             SetLayerRecursively(obj, layer);
-            if (showDebugInfo)
-            {
-                Debug.Log($"已將物件 {obj.name} 設定為層級 {layerName} (索引: {layer})");
-            }
         }
         else
         {
-            Debug.LogWarning($"層級 {layerName} 不存在，請在 Unity 中創建此層級，或物件將使用默認層級");
-
-            // 如果是 SculptObject 層不存在，使用默認層 (0)
             if (layerName == "SculptObject")
             {
                 SetLayerRecursively(obj, 0);
-                Debug.Log($"使用默認層級 (0) 替代 {layerName}");
             }
+        }
+
+        if (layerName == "SculptObject")
+        {
+            obj.tag = "SculptObject";
         }
     }
     #endregion
 
-    #region 模型位置和旋轉更新
+    #region ModelTransform
     void UpdatePreviewModelPosition()
     {
         if (Camera.main == null) return;
 
-        // 編輯模式的位置控制
         if (isEditingExistingObject && currentSelectedObject != null)
         {
             if (positionLock)
             {
-                // 編輯模式 + 鎖定：保持在鎖定位置，使用固定角度
                 currentSelectedObject.transform.position = lockedPosition;
-                // **修改：位置鎖定時，直接使用 UI 設定的角度，不跟隨相機**
                 currentSelectedObject.transform.rotation = Quaternion.Euler(modelRotation);
-
-                if (showDebugInfo)
-                {
-                    Debug.Log($"編輯模式鎖定 - 位置: {lockedPosition}, 固定角度: {modelRotation}");
-                }
             }
             else
             {
-                // 編輯模式 + 解鎖：跟隨相機
                 CalculateDynamicForwardDistanceForObject(currentSelectedObject);
                 UpdateObjectToFollowCamera(currentSelectedObject);
             }
             return;
         }
 
-        // 預覽模式的位置控制
         if (previewModel != null)
         {
             if (positionLock)
             {
-                // 預覽模式 + 鎖定：保持在鎖定位置，使用固定角度
                 previewModel.transform.position = lockedPosition;
-                // **修改：位置鎖定時，直接使用 UI 設定的角度，不跟隨相機**
                 previewModel.transform.rotation = Quaternion.Euler(modelRotation);
-
-                if (showDebugInfo)
-                {
-                    Debug.Log($"預覽模式鎖定 - 位置: {lockedPosition}, 固定角度: {modelRotation}");
-                }
             }
             else
             {
-                // 預覽模式 + 解鎖：正常跟隨相機
                 UpdateObjectToFollowCamera(previewModel);
             }
         }
@@ -636,14 +502,8 @@ public class SculptFunction : MonoBehaviour
         float actualZScale = scale.z;
         float zScaleDifference = actualZScale - 1.0f;
         dynamicForwardDistance = Mathf.Max(baseForwardDistance + zScaleDifference, 0.5f);
-
-        if (showDebugInfo)
-        {
-            Debug.Log($"計算物件 {obj.name} 的動態前進距離: {dynamicForwardDistance} (Z軸縮放: {actualZScale})");
-        }
     }
 
-    // 新增輔助方法：獲取水平前進方向
     private Vector3 GetHorizontalForward()
     {
         Vector3 cameraForward = Camera.main.transform.forward;
@@ -655,7 +515,6 @@ public class SculptFunction : MonoBehaviour
         return horizontalForward;
     }
 
-    // 新增輔助方法：物件跟隨相機的邏輯
     private void UpdateObjectToFollowCamera(GameObject targetObject)
     {
         Vector3 cameraPosition = Camera.main.transform.position;
@@ -667,10 +526,8 @@ public class SculptFunction : MonoBehaviour
             Vector3 rayOrigin = cameraPosition + horizontalForward * dynamicForwardDistance;
             Ray ray = new Ray(rayOrigin, Vector3.down);
 
-            // **修改：排除 PreviewObject layer（這樣編輯中的物件也會被排除）**
             int layerMask = ~(1 << LayerMask.NameToLayer("PreviewObject"));
 
-            // 如果 PreviewObject layer 不存在，使用所有層
             if (LayerMask.NameToLayer("PreviewObject") == -1)
             {
                 layerMask = ~0;
@@ -678,14 +535,6 @@ public class SculptFunction : MonoBehaviour
 
             cachedHitResult = Physics.Raycast(ray, out cachedHit, downwardCheckDistance, layerMask);
             lastRaycastTime = Time.time;
-
-            if (showDebugInfo)
-            {
-                string mode = isEditingExistingObject ? "編輯模式" : "預覽模式";
-                Debug.Log($"{mode} Raycast - Origin: {rayOrigin}, Hit: {cachedHitResult}, " +
-                         $"HitPoint: {(cachedHitResult ? cachedHit.point.ToString() : "None")}, " +
-                         $"Excluded Layer: PreviewObject");
-            }
         }
 
         Vector3 targetPosition;
@@ -701,14 +550,8 @@ public class SculptFunction : MonoBehaviour
         targetObject.transform.position = targetPosition;
         targetObject.transform.rotation = GetModelRotation(horizontalForward);
 
-        // 更新最後位置記錄
         lastPreviewPosition = targetObject.transform.position;
         lastPreviewRotation = targetObject.transform.rotation;
-
-        if (showDebugInfo)
-        {
-            Debug.Log($"{(isEditingExistingObject ? "編輯模式" : "預覽模式")}物件位置更新: {targetPosition}, 角度: {targetObject.transform.rotation.eulerAngles}");
-        }
     }
 
     Vector3 GetGroundPositionForObject(Vector3 hitPoint, GameObject targetObject)
@@ -751,7 +594,6 @@ public class SculptFunction : MonoBehaviour
             return Quaternion.Euler(modelRotation);
         }
 
-        // 位置未鎖定時，結合相機方向和 UI 旋轉
         Quaternion baseRotation = horizontalForward != Vector3.zero ?
             Quaternion.LookRotation(horizontalForward) : Quaternion.identity;
 
@@ -765,11 +607,6 @@ public class SculptFunction : MonoBehaviour
         float actualZScale = mainScale * individualScale.z;
         float zScaleDifference = actualZScale - 1.0f;
         dynamicForwardDistance = Mathf.Max(baseForwardDistance + zScaleDifference, 0.5f);
-
-        if (showDebugInfo)
-        {
-            Debug.Log($"動態前進距離: {dynamicForwardDistance} (Z軸縮放: {actualZScale})");
-        }
     }
     #endregion
 
@@ -779,24 +616,19 @@ public class SculptFunction : MonoBehaviour
 
         if (positionLock)
         {
-            // 鎖定時，記錄當前位置和角度
             if (isEditingExistingObject && currentSelectedObject != null)
             {
                 lockedPosition = currentSelectedObject.transform.position;
-                //lockedRotation = currentSelectedObject.transform.rotation;
             }
             else if (previewModel != null)
             {
                 lockedPosition = previewModel.transform.position;
-                //lockedRotation = previewModel.transform.rotation;
             }
         }
         else
         {
-            // 解鎖時，如果是編輯模式，重新計算動態前進距離
             if (isEditingExistingObject && currentSelectedObject != null)
             {
-                // 重新計算動態前進距離
                 CalculateDynamicForwardDistanceForObject(currentSelectedObject);
             }
         }
@@ -810,7 +642,7 @@ public class SculptFunction : MonoBehaviour
 
         if (positionLock)
         {
-            PositionLockButton.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);          
+            PositionLockButton.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
         }
         else
         {
@@ -824,18 +656,16 @@ public class SculptFunction : MonoBehaviour
         {
             positionLock = true;
             lockedPosition = currentSelectedObject.transform.position;
-            // **移除：不再設定 lockedRotation**
         }
         else
         {
             positionLock = false;
-            // **移除：不再重置 lockedRotation**
         }
 
         UpdatePositionLockUI();
     }
 
-    #region 旋轉控制
+    #region RotationControl
     void HandleRotationInput()
     {
         if (IsPointerOverUIElement())
@@ -862,11 +692,7 @@ public class SculptFunction : MonoBehaviour
         {
             Vector2 deltaPosition = (Vector2)Input.mousePosition - lastTouchPosition;
             currentRotationY -= deltaPosition.x * rotationSpeed;
-
-            // 將角度限制在 0-360 範圍內
             currentRotationY = NormalizeAngle(currentRotationY);
-
-            // 更新 Y 軸旋轉的 UI（將手勢旋轉同步到 modelRotation.y）
             modelRotation.y = currentRotationY;
             UpdateRotationYUI();
 
@@ -894,11 +720,7 @@ public class SculptFunction : MonoBehaviour
                     {
                         Vector2 deltaPosition = touch.position - lastTouchPosition;
                         currentRotationY -= deltaPosition.x * rotationSpeed;
-
-                        // 將角度限制在 0-360 範圍內
                         currentRotationY = NormalizeAngle(currentRotationY);
-
-                        // 更新 Y 軸旋轉的 UI（將手勢旋轉同步到 modelRotation.y）
                         modelRotation.y = currentRotationY;
                         UpdateRotationYUI();
 
@@ -926,7 +748,7 @@ public class SculptFunction : MonoBehaviour
     }
     #endregion
 
-    #region UI 事件處理
+    #region UIEvent
     void OnMainScaleChanged(float value)
     {
         if (isUpdatingUI) return;
@@ -983,7 +805,6 @@ public class SculptFunction : MonoBehaviour
     void OnScaleYInputChanged(string value) => HandleScaleInputChange(value, 1);
     void OnScaleZInputChanged(string value) => HandleScaleInputChange(value, 2);
 
-    // 旋轉滑桿事件
     void OnRotationXSliderChanged(float value)
     {
         if (isUpdatingUI) return;
@@ -996,7 +817,7 @@ public class SculptFunction : MonoBehaviour
     {
         if (isUpdatingUI) return;
         modelRotation.y = value;
-        currentRotationY = value; // 同步手勢旋轉值
+        currentRotationY = value;
         if (RotationYInputField != null) RotationYInputField.text = Mathf.RoundToInt(value).ToString();
         UpdateTargetModel();
     }
@@ -1009,7 +830,6 @@ public class SculptFunction : MonoBehaviour
         UpdateTargetModel();
     }
 
-    // 旋轉輸入欄位事件
     void OnRotationXInputChanged(string value) => HandleRotationInputChange(value, 0);
     void OnRotationYInputChanged(string value) => HandleRotationInputChange(value, 1);
     void OnRotationZInputChanged(string value) => HandleRotationInputChange(value, 2);
@@ -1018,7 +838,6 @@ public class SculptFunction : MonoBehaviour
     {
         if (isUpdatingUI || !float.TryParse(value, out float result)) return;
 
-        // 將角度限制在 0-360 範圍內
         result = NormalizeAngle(result);
 
         switch (axis)
@@ -1029,7 +848,7 @@ public class SculptFunction : MonoBehaviour
                 break;
             case 1:
                 modelRotation.y = result;
-                currentRotationY = result; // 同步手勢旋轉值
+                currentRotationY = result;
                 UpdateRotationSliderAndInput(RotationYSlider, RotationYInputField, result);
                 break;
             case 2:
@@ -1048,7 +867,6 @@ public class SculptFunction : MonoBehaviour
         isUpdatingUI = false;
     }
 
-    // 正規化角度到 0-360 範圍
     float NormalizeAngle(float angle)
     {
         angle = angle % 360f;
@@ -1056,7 +874,6 @@ public class SculptFunction : MonoBehaviour
         return angle;
     }
 
-    // 更新 Y 軸旋轉 UI
     void UpdateRotationYUI()
     {
         if (isUpdatingUI) return;
@@ -1102,36 +919,30 @@ public class SculptFunction : MonoBehaviour
     }
     #endregion
 
-    #region 主要按鈕事件
+    #region ButtonEvent
     void OnGenerateButtonClicked()
     {
         if (isEditingExistingObject)
         {
-            // 編輯模式：應用變更並取消選擇
             ApplyEditChanges();
         }
         else
         {
-            // 新建模式：生成新物件
             CreateNewObject();
         }
-
-        // 返回主頁
         SwitchToHome();
     }
 
     void CreateNewObject()
     {
-        // 移除預覽模型
         if (previewModel != null)
         {
             lastPreviewPosition = previewModel.transform.position;
-            lastPreviewRotation = Quaternion.Euler(modelRotation);
+            lastPreviewRotation = previewModel.transform.rotation;
             Destroy(previewModel);
             previewModel = null;
         }
 
-        // 生成最終模型
         Vector3 finalScale = new Vector3(
             mainScale * individualScale.x,
             mainScale * individualScale.y,
@@ -1146,17 +957,12 @@ public class SculptFunction : MonoBehaviour
             finalModel.transform.rotation = lastPreviewRotation;
             SetMaterialAndLayer(finalModel, finalMaterial, "SculptObject");
         }
-
-        Debug.Log($"生成最終模型完成: {selectedShape}，位置: {lastPreviewPosition}");
     }
 
     void ApplyEditChanges()
     {
         if (currentSelectedObject == null) return;
 
-        Debug.Log("開始套用編輯變更（保持原有 mesh）...");
-
-        // 只套用變換變更
         Vector3 finalScale = new Vector3(
             mainScale * individualScale.x,
             mainScale * individualScale.y,
@@ -1164,18 +970,8 @@ public class SculptFunction : MonoBehaviour
         );
 
         currentSelectedObject.transform.localScale = finalScale;
-        // **重要：使用與編輯過程中相同的角度計算方式**
         currentSelectedObject.transform.rotation = Quaternion.Euler(modelRotation);
-
-        // 確保恢復為 SculptObject layer
         SetLayerRecursively(currentSelectedObject, LayerMask.NameToLayer("SculptObject"));
-
-        if (showDebugInfo)
-        {
-            Debug.Log($"物件 {currentSelectedObject.name} 編輯完成，最終角度: {modelRotation}");
-        }
-
-        // 只更新 ModelStat 數據
         ModelStat modelStat = currentSelectedObject.GetComponent<ModelStat>();
         if (modelStat != null)
         {
@@ -1184,40 +980,76 @@ public class SculptFunction : MonoBehaviour
                 filename = currentSelectedObject.name,
                 shapeType = selectedShape.ToString(),
                 position = currentSelectedObject.transform.position,
-                rotation = modelRotation,  // **使用 modelRotation 而不是 transform.eulerAngles**
+                rotation = modelRotation,
                 scale = currentSelectedObject.transform.localScale,
                 timestamp = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
             };
 
             modelStat.SetModelData(updatedData);
-            Debug.Log($"已更新 {currentSelectedObject.name} 的 ModelStat 數據（保持原有 mesh）");
         }
 
         DeselectCurrentObject();
-        Debug.Log($"編輯完成：{currentSelectedObject?.name} - 雕刻效果已保留");
     }
 
     void OnResetButtonClicked()
     {
-        ResetAllParameters();
+        if (isEditingExistingObject)
+        {
+            ResetToOriginalParameters();
+        }
+        else
+        {
+            ResetAllParameters();
+        }
+
         UpdateAllUIValues();
 
         if (isEditingExistingObject)
         {
-            // 編輯模式：重新載入物件參數
             if (currentSelectedObject != null)
             {
-                LoadParametersFromObject(currentSelectedObject);
-                UpdateAllUIValues();
+                currentSelectedObject.transform.localScale = originalObjectScale;
+                currentSelectedObject.transform.rotation = Quaternion.Euler(originalObjectRotation);
+                currentSelectedObject.transform.position = originalObjectPosition;
+                lockedPosition = originalObjectPosition;
             }
         }
         else
         {
-            // 新建模式：重新創建預覽模型
             CreatePreviewModel();
         }
+    }
 
-        Debug.Log("參數已重置");
+    void ResetToOriginalParameters()
+    {
+        if (currentSelectedObject == null) return;
+
+        Vector3 scale = originalObjectScale;
+        mainScale = Mathf.Max(scale.x, scale.y, scale.z);
+
+        if (mainScale > 0)
+        {
+            individualScale = new Vector3(
+                scale.x / mainScale,
+                scale.y / mainScale,
+                scale.z / mainScale
+            );
+        }
+        else
+        {
+            individualScale = Vector3.one;
+            mainScale = 1f;
+        }
+
+        modelRotation = new Vector3(
+            NormalizeAngle(originalObjectRotation.x),
+            NormalizeAngle(originalObjectRotation.y),
+            NormalizeAngle(originalObjectRotation.z)
+        );
+
+        currentRotationY = modelRotation.y;
+        gridSize = defaultGridSize;
+        heightOffset = 0f;
     }
 
     void OnBackButtonClicked()
@@ -1243,7 +1075,35 @@ public class SculptFunction : MonoBehaviour
         uiManager.UIHome?.SetActive(true);
         uiManager.BackButton?.SetActive(false);
 
-        // 重置編輯狀態
+        GameObject[] sculptObjects = GameObject.FindGameObjectsWithTag("SculptObject");
+        if (sculptObjects.Length > 0)
+        {
+            ClearButton.SetActive(true);
+        }
+        else
+        {
+            int sculptLayer = LayerMask.NameToLayer("SculptObject");
+            if (sculptLayer != -1)
+            {
+                GameObject[] allObjects = FindObjectsOfType<GameObject>();
+                bool hasObjects = false;
+                for (int i = 0; i < allObjects.Length; i++)
+                {
+                    if (allObjects[i].layer == sculptLayer)
+                    {
+                        hasObjects = true;
+                        break;
+                    }
+                }
+                ClearButton.SetActive(hasObjects);
+            }
+            else
+            {
+                ClearButton.SetActive(false);
+            }
+        }
+
+
         isEditingExistingObject = false;
     }
 
@@ -1258,45 +1118,30 @@ public class SculptFunction : MonoBehaviour
     }
     #endregion
 
-    #region 工具方法
+    #region ToolFunction
     void UpdateTargetModel()
     {
         GameObject targetModel = isEditingExistingObject ? currentSelectedObject : previewModel;
         if (targetModel == null) return;
 
-        // 計算最終縮放值
         Vector3 finalScale = new Vector3(
             mainScale * individualScale.x,
             mainScale * individualScale.y,
             mainScale * individualScale.z
         );
 
-        // 更新縮放
         targetModel.transform.localScale = finalScale;
 
-        // **修改：位置鎖定時使用固定角度，否則會在 UpdateObjectToFollowCamera 中更新**
         if (positionLock)
         {
-            // 位置鎖定時，使用 UI 設定的固定角度
             targetModel.transform.rotation = Quaternion.Euler(modelRotation);
-
-            if (showDebugInfo)
-            {
-                Debug.Log($"UpdateTargetModel - 位置鎖定，使用固定角度: {modelRotation}");
-            }
         }
 
-        // 編輯模式：只更新變換，不重新生成 mesh
         if (isEditingExistingObject)
         {
-            if (showDebugInfo)
-            {
-                Debug.Log($"編輯模式：更新變換 - 縮放: {finalScale}, 旋轉: {modelRotation}");
-            }
             return;
         }
 
-        // 預覽模式：正常重新生成 mesh
         if (previewModel != null)
         {
             CubeCarvingSystem carvingSystem = targetModel.GetComponent<CubeCarvingSystem>();
@@ -1308,19 +1153,14 @@ public class SculptFunction : MonoBehaviour
         }
     }
 
-    // 新增方法：檢查物件是否已被雕刻過
     private bool IsObjectCarved(GameObject obj)
     {
         CubeCarvingSystem carvingSystem = obj.GetComponent<CubeCarvingSystem>();
         if (carvingSystem == null) return false;
 
-        // 這裡可以添加檢查邏輯來判斷物件是否已被雕刻
-        // 比如檢查 mesh 的頂點數是否與原始形狀不同
         MeshFilter meshFilter = obj.GetComponent<MeshFilter>();
         if (meshFilter != null && meshFilter.mesh != null)
         {
-            // 如果 mesh 已經被修改過，我們認為它已被雕刻
-            // 可以通過比較頂點數或其他特徵來判斷
             return meshFilter.mesh.vertexCount > 0;
         }
 
@@ -1339,22 +1179,32 @@ public class SculptFunction : MonoBehaviour
 
     public void Clear()
     {
-        // 取消當前選擇
         DeselectCurrentObject();
 
-        if (parentObject != null)
+        GameObject[] allSculptObjects = GameObject.FindGameObjectsWithTag("SculptObject");
+        if (allSculptObjects.Length > 0)
         {
-            for (int i = parentObject.childCount - 1; i >= 0; i--)
+            for (int i = 0; i < allSculptObjects.Length; i++)
             {
-                Transform child = parentObject.GetChild(i);
-                if (child.gameObject.layer == LayerMask.NameToLayer("SculptObject"))
+                Destroy(allSculptObjects[i]);
+            }
+        }
+        else
+        {
+            int sculptLayer = LayerMask.NameToLayer("SculptObject");
+            if (sculptLayer != -1)
+            {
+                GameObject[] allObjects = FindObjectsOfType<GameObject>();
+                for (int i = 0; i < allObjects.Length; i++)
                 {
-                    Destroy(child.gameObject);
+                    if (allObjects[i].layer == sculptLayer)
+                    {
+                        Destroy(allObjects[i]);
+                    }
                 }
             }
         }
 
-        // 清除當前生成的模型
         if (previewModel != null)
         {
             Destroy(previewModel);
@@ -1373,23 +1223,19 @@ public class SculptFunction : MonoBehaviour
     {
         isUpdatingUI = true;
 
-        // 更新滑桿
         if (MainScaleSlider != null) MainScaleSlider.value = mainScale;
         if (HeightSlider != null) HeightSlider.value = heightOffset;
         if (ScaleXSlider != null) ScaleXSlider.value = individualScale.x;
         if (ScaleYSlider != null) ScaleYSlider.value = individualScale.y;
         if (ScaleZSlider != null) ScaleZSlider.value = individualScale.z;
 
-        // 更新旋轉滑桿
         if (RotationXSlider != null) RotationXSlider.value = modelRotation.x;
         if (RotationYSlider != null) RotationYSlider.value = modelRotation.y;
         if (RotationZSlider != null) RotationZSlider.value = modelRotation.z;
 
-        // 更新文字顯示
         if (MainScaleValue != null) MainScaleValue.text = $"{Mathf.RoundToInt(mainScale * 100)}%";
         if (HeightValue != null) HeightValue.text = heightOffset.ToString("F2");
 
-        // 更新輸入欄位
         UpdateIndividualScaleInputs();
         UpdateRotationInputs();
         UpdateGridInput();

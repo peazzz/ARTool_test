@@ -495,7 +495,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u5713\u9AD4"
+  m_Text: Sphere
 --- !u!222 &34338935
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -1074,10 +1074,10 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 60
+    m_FontSize: 42
     m_FontStyle: 0
     m_BestFit: 0
-    m_MinSize: 6
+    m_MinSize: 4
     m_MaxSize: 60
     m_Alignment: 4
     m_AlignByGeometry: 0
@@ -1085,7 +1085,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u751F\u6210"
+  m_Text: Generate
 --- !u!222 &197049904
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -1129,7 +1129,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: -500, y: 320}
-  m_SizeDelta: {x: 200, y: 80}
+  m_SizeDelta: {x: 220, y: 80}
   m_Pivot: {x: 0, y: 0.5}
 --- !u!114 &200854235
 MonoBehaviour:
@@ -1164,7 +1164,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u9032\u968E\u8ABF\u6574\n"
+  m_Text: Advanced
 --- !u!222 &200854236
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -1820,7 +1820,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u7269\u4EF6\u5927\u5C0F"
+  m_Text: Scale
 --- !u!222 &275863441
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -2426,7 +2426,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u751F\u6210A"
+  m_Text: Generate A
 --- !u!222 &331264806
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -3079,7 +3079,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u7E6A\u756B"
+  m_Text: Draw
 --- !u!222 &442556417
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -3158,7 +3158,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u81A0\u56CA\u9AD4"
+  m_Text: Capsule
 --- !u!222 &472246922
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -3237,7 +3237,9 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u5927\u5C0F"
+  m_Text: 'Scale
+
+'
 --- !u!222 &481192445
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -4321,7 +4323,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u65B9\u584A\u5927\u5C0F"
+  m_Text: CubeSize
 --- !u!222 &698668049
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -4699,7 +4701,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 48
+    m_FontSize: 42
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 0
@@ -4710,7 +4712,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u65CB\u8F49"
+  m_Text: Rotation
 --- !u!222 &717119826
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -5012,7 +5014,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u5176\u4ED6\n"
+  m_Text: Other
 --- !u!222 &742554214
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -5215,7 +5217,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u9396\u5B9A\u5EA7\u6A19"
+  m_Text: Lock
 --- !u!222 &890753147
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -6901,7 +6903,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u6A21\u578B\u96D5\u523B"
+  m_Text: Sculpt
 --- !u!222 &1112130100
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -7084,7 +7086,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u6B63\u65B9\u9AD4"
+  m_Text: Cube
 --- !u!222 &1143796006
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -7163,7 +7165,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u9AD8\u5EA6"
+  m_Text: Height
 --- !u!222 &1151441441
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -8430,7 +8432,7 @@ MonoBehaviour:
   previewMaterial: {fileID: 2100000, guid: b3a7ab6439a9d2a42a21bf82ecbb0a9a, type: 2}
   finalMaterial: {fileID: 2100000, guid: 8ee1e6a834801b945b4c1d331b786945, type: 2}
   selectedMaterial: {fileID: 2100000, guid: 77c1fb673620ad94c832431d15971fe1, type: 2}
-  parentObject: {fileID: 489399476}
+  parentObject: {fileID: 0}
   targetCamera: {fileID: 1014067141}
   uiManager: {fileID: 1342327331}
   navMeshManager: {fileID: 2032460438}
@@ -8618,7 +8620,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u91CD\u7F6E"
+  m_Text: Reset
 --- !u!222 &1356112533
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -8778,7 +8780,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u9078\u64C7\u6A21\u578B"
+  m_Text: Shape
 --- !u!222 &1368742479
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -10654,7 +10656,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u751F\u6210B"
+  m_Text: Generate B
 --- !u!222 &1752567274
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -10812,7 +10814,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u7269\u4EF6\u6E05\u9664\n"
+  m_Text: Clear
 --- !u!222 &1797440896
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -11854,7 +11856,9 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u908A\u9577\u683C\u6578"
+  m_Text: 'GridSize
+
+'
 --- !u!222 &1953396722
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -12625,7 +12629,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u5713\u67F1\u9AD4"
+  m_Text: Cylinder
 --- !u!222 &2066935857
 CanvasRenderer:
   m_ObjectHideFlags: 0

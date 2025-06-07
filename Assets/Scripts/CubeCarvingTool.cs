@@ -2,11 +2,9 @@ using UnityEngine;
 
 public class CubeCarvingTool : MonoBehaviour
 {
-    [Header("工具設置")]
     [SerializeField] private Vector3 toolSize = new Vector3(0.2f, 0.1f, 0.2f);
     [SerializeField] private int samplingDensity = 4;
 
-    [Header("視覺化")]
     [SerializeField] private bool showToolBounds = true;
     [SerializeField] private Color toolColor = Color.blue;
     [SerializeField] private bool showCarvingPoints = true;
@@ -90,7 +88,6 @@ public class CubeCarvingTool : MonoBehaviour
     {
         if (!showToolBounds) return;
 
-        // 繪製工具邊界
         Gizmos.color = toolColor;
         Gizmos.matrix = transform.localToWorldMatrix;
         Gizmos.DrawWireCube(Vector3.zero, toolSize);
@@ -100,7 +97,6 @@ public class CubeCarvingTool : MonoBehaviour
 
         Gizmos.matrix = Matrix4x4.identity;
 
-        // 繪製採樣點
         if (showCarvingPoints && carvingPoints != null)
         {
             Gizmos.color = Color.red;
