@@ -18,15 +18,17 @@ public struct ModelData
     public Vector3 position;
     public Vector3 rotation;
     public Vector3 scale;
+    public Color materialColor;
     public string timestamp;
 
-    public ModelData(string filename, string shapeType, Vector3 position, Vector3 rotation, Vector3 scale)
+    public ModelData(string filename, string shapeType, Vector3 position, Vector3 rotation, Vector3 scale, Color color)
     {
         this.filename = filename;
         this.shapeType = shapeType;
         this.position = position;
         this.rotation = rotation;
         this.scale = scale;
+        this.materialColor = color;
         this.timestamp = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
     }
 }

@@ -10,7 +10,6 @@ public class SculptFunction : MonoBehaviour
     public GameObject ClearButton;
     public GameObject cubeCarvingSystemPrefab;
     public Material previewMaterial, finalMaterial;
-    public Material selectedMaterial;
     public Transform parentObject;
     public Camera targetCamera;
     public UIManager uiManager;
@@ -83,8 +82,12 @@ public class SculptFunction : MonoBehaviour
         SetupAllButtonEvents();
         SetupSliderAndInputEvents();
         dynamicForwardDistance = baseForwardDistance;
-        fcp.color = ColorfulMaterial.color;
-        fcp.onColorChange.AddListener(OnChangeColor);
+
+        if (fcp != null && ColorfulMaterial != null)
+        {
+            fcp.color = ColorfulMaterial.color;
+            fcp.onColorChange.AddListener(OnChangeColor);
+        }
     }
 
     void Update()
@@ -160,6 +163,8 @@ public class SculptFunction : MonoBehaviour
         originalObjectRotation = currentSelectedObject.transform.eulerAngles;
         originalObjectPosition = currentSelectedObject.transform.position;
 
+        LoadColorFromObject(currentSelectedObject);
+
         CubeCarvingSystem carvingSystem = currentSelectedObject.GetComponent<CubeCarvingSystem>();
         if (carvingSystem != null)
         {
@@ -178,6 +183,33 @@ public class SculptFunction : MonoBehaviour
 
         UpdateAllUIValues();
         SetDefaultPositionLockState(true);
+
+        ApplyColorToModel(currentSelectedObject, fcp.color);
+    }
+
+    private void LoadColorFromObject(GameObject obj)
+    {
+        ModelStat modelStat = obj.GetComponent<ModelStat>();
+        Color objectColor = Color.white;
+
+        if (modelStat != null && modelStat.IsModelDataValid())
+        {
+            objectColor = modelStat.ModelData.materialColor;
+        }
+        else
+        {
+            var renderer = obj.GetComponent<MeshRenderer>();
+            if (renderer != null && renderer.material != null)
+                objectColor = renderer.material.color;
+        }
+
+        // 更新 UI
+        fcp.onColorChange.RemoveListener(OnChangeColor);
+        fcp.color = objectColor;
+        fcp.onColorChange.AddListener(OnChangeColor);
+        ColorfulMaterial.color = objectColor;
+
+        ApplyColorToModel(obj, objectColor);
     }
 
     void DeselectCurrentObject()
@@ -185,6 +217,8 @@ public class SculptFunction : MonoBehaviour
         if (currentSelectedObject != null)
         {
             SetObjectGlow(currentSelectedObject, false);
+            RestoreObjectOriginalColor(currentSelectedObject);
+
             SetLayerRecursively(currentSelectedObject, originalLayer);
             currentSelectedObject = null;
         }
@@ -199,13 +233,12 @@ public class SculptFunction : MonoBehaviour
             if (glow)
             {
                 originalMaterial = renderer.material;
-                if (selectedMaterial != null)
-                {
-                    renderer.material = selectedMaterial;
-                }
+                // 不改變材質，只記錄狀態
+                Debug.Log($"Selected object: {obj.name}");
             }
             else
             {
+                // 確保材質恢復原狀
                 if (originalMaterial != null)
                 {
                     renderer.material = originalMaterial;
@@ -257,7 +290,7 @@ public class SculptFunction : MonoBehaviour
 
         GenerateButton?.onClick.AddListener(OnGenerateButtonClicked);
         ResetButton?.onClick.AddListener(OnResetButtonClicked);
-        uiManager.BackButton?.GetComponent<Button>().onClick.AddListener(OnBackButtonClicked);
+        //uiManager.BackButton?.GetComponent<Button>().onClick.AddListener(OnBackButtonClicked);
         PositionLockButton.GetComponent<Button>().onClick.AddListener(TogglePositionLock);
     }
 
@@ -288,6 +321,86 @@ public class SculptFunction : MonoBehaviour
     private void OnChangeColor(Color co)
     {
         ColorfulMaterial.color = co;
+        ApplyColorToCurrentModel(co);
+    }
+
+    private void ApplyColorToCurrentModel(Color color)
+    {
+        GameObject targetModel = null;
+
+        // 判斷當前要套用顏色的模型
+        if (isEditingExistingObject && currentSelectedObject != null)
+        {
+            targetModel = currentSelectedObject;
+        }
+        else if (previewModel != null)
+        {
+            targetModel = previewModel;
+        }
+
+        if (targetModel != null)
+        {
+            ApplyColorToModel(targetModel, color);
+        }
+    }
+
+    // 3. 新增方法：套用顏色到指定模型
+    private void ApplyColorToModel(GameObject model, Color color)
+    {
+        // 檢查是否是 CubeCarvingSystem 生成的模型
+        CubeCarvingSystem carvingSystem = model.GetComponent<CubeCarvingSystem>();
+        if (carvingSystem != null)
+        {
+            // 直接設定 CubeCarvingSystem 的材質顏色
+            MeshRenderer renderer = model.GetComponent<MeshRenderer>();
+            if (renderer != null)
+            {
+                // 創建新的材質實例，避免影響原始材質
+                Material newMaterial = new Material(ColorfulMaterial);
+                newMaterial.color = color;
+
+                // 設定一些常見的顏色屬性
+                if (newMaterial.HasProperty("_Color"))
+                    newMaterial.SetColor("_Color", color);
+                if (newMaterial.HasProperty("_BaseColor"))
+                    newMaterial.SetColor("_BaseColor", color);
+                if (newMaterial.HasProperty("_MainColor"))
+                    newMaterial.SetColor("_MainColor", color);
+                if (newMaterial.HasProperty("_Albedo"))
+                    newMaterial.SetColor("_Albedo", color);
+
+                renderer.material = newMaterial;
+
+                Debug.Log($"Applied color {color} to CubeCarvingSystem: {model.name}");
+            }
+        }
+        else
+        {
+            // 處理一般模型（包括子物件）
+            MeshRenderer[] renderers = model.GetComponentsInChildren<MeshRenderer>();
+
+            foreach (MeshRenderer renderer in renderers)
+            {
+                if (renderer != null)
+                {
+                    Material newMaterial = new Material(ColorfulMaterial);
+                    newMaterial.color = color;
+
+                    if (newMaterial.HasProperty("_Color"))
+                        newMaterial.SetColor("_Color", color);
+                    if (newMaterial.HasProperty("_BaseColor"))
+                        newMaterial.SetColor("_BaseColor", color);
+                    if (newMaterial.HasProperty("_MainColor"))
+                        newMaterial.SetColor("_MainColor", color);
+                    if (newMaterial.HasProperty("_Albedo"))
+                        newMaterial.SetColor("_Albedo", color);
+
+                    renderer.material = newMaterial;
+
+                    Debug.Log($"Applied color {color} to {renderer.gameObject.name}");
+                }
+            }
+        }
     }
 
     void SetupSlider(Slider slider, float min, float max, float defaultValue, UnityEngine.Events.UnityAction<float> callback)
@@ -339,9 +452,20 @@ public class SculptFunction : MonoBehaviour
 
         if (previewModel != null)
         {
-            SetMaterialAndLayer(previewModel, previewMaterial, "PreviewObject");
+            ApplyColorToModel(previewModel, fcp.color);
+            SetLayerRecursively(previewModel, LayerMask.NameToLayer("PreviewObject"));
+
             CalculateDynamicForwardDistance();
         }
+    }
+
+    private IEnumerator ApplyColorAfterMeshGeneration(GameObject model, Color color)
+    {
+        // 等待兩幀，確保 CubeCarvingSystem 已完成 mesh 生成
+        yield return null;
+        yield return null;
+
+        ApplyColorToModel(model, color);
     }
 
     public GameObject GenerateShapeWithParameters(VoxelShape shapeType, Vector3 scale, int gridSize, bool isPreview = false)
@@ -398,6 +522,7 @@ public class SculptFunction : MonoBehaviour
             position = gameObject.transform.position,
             rotation = gameObject.transform.eulerAngles,
             scale = gameObject.transform.localScale,
+            materialColor = fcp.color,
             timestamp = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
         };
 
@@ -469,7 +594,9 @@ public class SculptFunction : MonoBehaviour
         {
             if (positionLock)
             {
-                currentSelectedObject.transform.position = lockedPosition;
+                Vector3 newPosition = lockedPosition;
+                newPosition.y = lockedPosition.y + heightOffset;
+                currentSelectedObject.transform.position = newPosition;
                 currentSelectedObject.transform.rotation = Quaternion.Euler(modelRotation);
             }
             else
@@ -484,7 +611,9 @@ public class SculptFunction : MonoBehaviour
         {
             if (positionLock)
             {
-                previewModel.transform.position = lockedPosition;
+                Vector3 newPosition = lockedPosition;
+                newPosition.y = lockedPosition.y + heightOffset;
+                previewModel.transform.position = newPosition;
                 previewModel.transform.rotation = Quaternion.Euler(modelRotation);
             }
             else
@@ -619,6 +748,7 @@ public class SculptFunction : MonoBehaviour
             if (isEditingExistingObject && currentSelectedObject != null)
             {
                 lockedPosition = currentSelectedObject.transform.position;
+                lockedPosition.y -= heightOffset;
             }
             else if (previewModel != null)
             {
@@ -656,6 +786,7 @@ public class SculptFunction : MonoBehaviour
         {
             positionLock = true;
             lockedPosition = currentSelectedObject.transform.position;
+            lockedPosition.y -= heightOffset;
         }
         else
         {
@@ -775,6 +906,22 @@ public class SculptFunction : MonoBehaviour
         if (isUpdatingUI) return;
         heightOffset = value;
         if (HeightValue != null) HeightValue.text = value.ToString("F2");
+
+        if (positionLock)
+        {
+            if (isEditingExistingObject && currentSelectedObject != null)
+            {
+                Vector3 newPosition = lockedPosition;
+                newPosition.y = lockedPosition.y + value;
+                currentSelectedObject.transform.position = newPosition;
+            }
+            else if (previewModel != null)
+            {
+                Vector3 newPosition = lockedPosition;
+                newPosition.y = lockedPosition.y + value;
+                previewModel.transform.position = newPosition;
+            }
+        }
     }
 
     void OnScaleXSliderChanged(float value)
@@ -956,6 +1103,8 @@ public class SculptFunction : MonoBehaviour
             finalModel.transform.position = lastPreviewPosition;
             finalModel.transform.rotation = lastPreviewRotation;
             SetMaterialAndLayer(finalModel, finalMaterial, "SculptObject");
+
+            StartCoroutine(ApplyColorAfterMeshGeneration(finalModel, fcp.color));
         }
     }
 
@@ -972,6 +1121,8 @@ public class SculptFunction : MonoBehaviour
         currentSelectedObject.transform.localScale = finalScale;
         currentSelectedObject.transform.rotation = Quaternion.Euler(modelRotation);
         SetLayerRecursively(currentSelectedObject, LayerMask.NameToLayer("SculptObject"));
+        StartCoroutine(ApplyColorAfterMeshGeneration(currentSelectedObject, fcp.color));
+
         ModelStat modelStat = currentSelectedObject.GetComponent<ModelStat>();
         if (modelStat != null)
         {
@@ -982,6 +1133,7 @@ public class SculptFunction : MonoBehaviour
                 position = currentSelectedObject.transform.position,
                 rotation = modelRotation,
                 scale = currentSelectedObject.transform.localScale,
+                materialColor = fcp.color,
                 timestamp = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
             };
 
@@ -1052,20 +1204,22 @@ public class SculptFunction : MonoBehaviour
         heightOffset = 0f;
     }
 
-    void OnBackButtonClicked()
+    public void OnBackButtonClicked()
     {
-        if (isEditingExistingObject)
+        if (!uiManager.isInColorPage)
         {
-            DeselectCurrentObject();
-        }
+            if (isEditingExistingObject)
+            {
+                DeselectCurrentObject();
+            }
 
-        if (previewModel != null)
-        {
-            Destroy(previewModel);
-            previewModel = null;
+            if (previewModel != null)
+            {
+                Destroy(previewModel);
+                previewModel = null;
+            }
+            //SwitchToHome();
         }
-        SwitchToHome();
-
     }
 
     void SwitchToHome()
@@ -1260,6 +1414,17 @@ public class SculptFunction : MonoBehaviour
     void UpdateGridInput()
     {
         if (GridInputField != null) GridInputField.text = gridSize.ToString();
+    }
+
+    private void RestoreObjectOriginalColor(GameObject obj)
+    {
+        ModelStat modelStat = obj.GetComponent<ModelStat>();
+        if (modelStat != null && modelStat.IsModelDataValid())
+        {
+            Color savedColor = modelStat.ModelData.materialColor;
+            ApplyColorToModel(obj, savedColor);
+            Debug.Log($"Restored original color: {savedColor}");
+        }
     }
     #endregion
 }

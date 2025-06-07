@@ -19,14 +19,20 @@ public class UIManager : MonoBehaviour
     public GameObject ScalePage;
     public GameObject RotationPage;
     public GameObject OtherPage;
+    public GameObject ColorPage;
+
     public Button ScalePageButton;
     public Button RotationPageButton;
     public Button OtherPageButton;
+    public GameObject ColorPageButton;
+
+    public GameObject AE, SP, RP, OP;
 
     [Header("SculptFunction")]
     public SculptFunction sculptFunction;
 
     private bool UI_on = false;
+    public bool isInColorPage = false;
 
     private readonly Vector3 UI_SHOW_POSITION = Vector3.zero;
     private readonly Vector3 UI_HIDE_POSITION = new Vector3(0, -400, 0);
@@ -37,6 +43,11 @@ public class UIManager : MonoBehaviour
     {
         InitializeUI();
         SetupAllButtonEvents();
+    }
+
+    void Update()
+    {
+        ColorPageButton.GetComponent<Image>().color = sculptFunction.fcp.color;
     }
 
     void InitializeUI()
@@ -56,6 +67,7 @@ public class UIManager : MonoBehaviour
         ScalePageButton?.onClick.AddListener(() => ScalePageSelect());
         RotationPageButton?.onClick.AddListener(() => RotationPageSelect());
         OtherPageButton?.onClick.AddListener(() => OtherPageSelect());
+        ColorPageButton.GetComponent<Button>().onClick.AddListener(() => ColorPageSelect());
     }
 
     public void SculptButton()
@@ -92,7 +104,7 @@ public class UIManager : MonoBehaviour
         OtherPageButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
     }
 
-    void OtherPageSelect()
+    public void OtherPageSelect()
     {
         ScalePage.SetActive(false);
         RotationPage.SetActive(false);
@@ -103,10 +115,43 @@ public class UIManager : MonoBehaviour
         OtherPageButton.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
     }
 
+    void ColorPageSelect()
+    {
+        isInColorPage = true;
+
+        ColorPage.SetActive(true);
+        OtherPage.SetActive(false);
+
+        AE.SetActive(false);
+        SP.SetActive(false);
+        RP.SetActive(false);
+        OP.SetActive(false);
+    }
+
+    void BackToPanel2()
+    {   
+        AE.SetActive(true);
+        SP.SetActive(true);
+        RP.SetActive(true);
+        OP.SetActive(true);
+        ColorPage.SetActive(false);
+        OtherPage.SetActive(true);
+        isInColorPage = false;
+    }
+
     public void Back()
     {
-        SwitchToPanel(UIHome);
-        SetPanelActive(BackButton, false);
+        if (isInColorPage)
+        {
+            BackToPanel2();
+        }
+        else
+        {
+            SwitchToPanel(UIHome);
+            SetPanelActive(BackButton, false);
+
+            sculptFunction.OnBackButtonClicked();
+        }
     }
 
     public void SelectObjectForEditing(GameObject selectedObject)
