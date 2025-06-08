@@ -17,26 +17,35 @@ public class UIManager : MonoBehaviour
     public GameObject SculptPanel1;
     public GameObject SculptPanel2;
 
+    public GameObject DrawPanel1;
+    public GameObject DrawPanel2;
+    public GameObject LineRenenderPanel;
+
     [Header("SculptPanel2Content")]
     public GameObject ScalePage;
     public GameObject RotationPage;
     public GameObject OtherPage;
-    public GameObject ColorPage;
+    public GameObject ColorPage1;
+    public GameObject ColorPage2;
 
     public Button ScalePageButton;
     public Button RotationPageButton;
     public Button OtherPageButton;
-    public GameObject ColorPageButton;
+    public GameObject ColorPageButtonForSculpt;
+    public GameObject ColorPageButtonForDraw;
 
     public GameObject AE, SP, RP, OP;
 
     [Header("SculptFunction")]
     public SculptFunction sculptFunction;
+    public DrawFunction drawFunction;
 
     [Header("Component")]
     public LightshipNavMeshRenderer lightshipNavMeshRenderer;
 
     private bool UI_on = false;
+    public bool inSculpt;
+    public bool inDraw;
     public bool isInColorPage = false;
     public bool isGroundChecking = true;
 
@@ -54,9 +63,14 @@ public class UIManager : MonoBehaviour
 
     void Update()
     {
-        if (ColorPage != null && ColorPage.activeInHierarchy)
+        if (ColorPage1 != null && ColorPage1.activeInHierarchy)
         {
-            ColorPageButton.GetComponent<Image>().color = sculptFunction.fcp.color;
+            ColorPageButtonForSculpt.GetComponent<Image>().color = sculptFunction.fcp.color;
+        }
+
+        if (ColorPage2 != null && ColorPage2.activeInHierarchy)
+        {
+            ColorPageButtonForDraw.GetComponent<Image>().color = drawFunction.fcp.color;
         }
     }
 
@@ -77,13 +91,22 @@ public class UIManager : MonoBehaviour
         ScalePageButton?.onClick.AddListener(() => ScalePageSelect());
         RotationPageButton?.onClick.AddListener(() => RotationPageSelect());
         OtherPageButton?.onClick.AddListener(() => OtherPageSelect());
-        ColorPageButton.GetComponent<Button>().onClick.AddListener(() => ColorPageSelect());
+        ColorPageButtonForSculpt.GetComponent<Button>().onClick.AddListener(() => ColorPageSelectForSculpt());
+        ColorPageButtonForDraw.GetComponent<Button>().onClick.AddListener(() => ColorPageSelectForDraw());
         GroundCheck.GetComponent<Button>().onClick.AddListener(() => GroundCheckFunction());
     }
 
     public void SculptButton()
     {
+        inSculpt = true;
         SwitchToPanel(SculptPanel1);
+        SetPanelActive(BackButton, true);
+    }
+
+    public void DrawButton()
+    {
+        inDraw = true;
+        SwitchToPanel(DrawPanel1);
         SetPanelActive(BackButton, true);
     }
 
@@ -126,22 +149,32 @@ public class UIManager : MonoBehaviour
         OtherPageButton.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
     }
 
-    void ColorPageSelect()
+    public void ColorPageSelectForSculpt()
     {
         isInColorPage = true;
 
-        ColorPage.SetActive(true);
+        ColorPage1.SetActive(true);
         OtherPage.SetActive(false);
 
-        AE.SetActive(false);
-        SP.SetActive(false);
-        RP.SetActive(false);
-        OP.SetActive(false);
-
-        if (sculptFunction != null)
+        if (inSculpt)
         {
-            StartCoroutine(DelayedColorSync());
+            AE.SetActive(false);
+            SP.SetActive(false);
+            RP.SetActive(false);
+            OP.SetActive(false);
+
+            if (sculptFunction != null)
+            {
+                StartCoroutine(DelayedColorSync());
+            }
         }
+    }
+
+    public void ColorPageSelectForDraw()
+    {
+        isInColorPage = true;
+        ColorPage2.SetActive(true);
+        LineRenenderPanel.SetActive(false);
     }
 
     void GroundCheckFunction()
@@ -172,7 +205,7 @@ public class UIManager : MonoBehaviour
         SP.SetActive(true);
         RP.SetActive(true);
         OP.SetActive(true);
-        ColorPage.SetActive(false);
+        ColorPage1.SetActive(false);
         OtherPage.SetActive(true);
         isInColorPage = false;
 
@@ -184,16 +217,41 @@ public class UIManager : MonoBehaviour
 
     public void Back()
     {
-        if (isInColorPage)
+        if (inSculpt)
         {
-            BackToPanel2();
-        }
-        else
-        {
-            SwitchToPanel(UIHome);
-            SetPanelActive(BackButton, false);
+            if (isInColorPage)
+            {
+                BackToPanel2();
+            }
+            else
+            {
+                SwitchToPanel(UIHome);
+                SetPanelActive(BackButton, false);
 
-            sculptFunction.OnBackButtonClicked();
+                sculptFunction.OnBackButtonClicked();
+                inSculpt = false;
+                lightshipNavMeshRenderer.enabled = false;
+            }
+        }
+        else if (inDraw)
+        {
+            if (DrawPanel1.activeSelf)
+            {
+                SwitchToPanel(UIHome);
+            }
+            else if (DrawPanel2.activeSelf)
+            {
+                SwitchToPanel(DrawPanel1);
+                drawFunction.in3DDraw = false;
+                drawFunction.in3DDraw_SL = false;
+                drawFunction.in2DDraw = false;
+            }
+            else if (LineRenenderPanel.activeSelf)
+            {
+                SwitchToPanel(DrawPanel2);
+                drawFunction.LineBrush = false;
+                drawFunction.ParticleBrush = false;
+            }
         }
     }
 
@@ -225,6 +283,9 @@ public class UIManager : MonoBehaviour
         SetPanelActive(UIHome, targetPanel == UIHome);
         SetPanelActive(SculptPanel1, targetPanel == SculptPanel1);
         SetPanelActive(SculptPanel2, targetPanel == SculptPanel2);
+        SetPanelActive(DrawPanel1, targetPanel == DrawPanel1);
+        SetPanelActive(DrawPanel2, targetPanel == DrawPanel2);
+        SetPanelActive(LineRenenderPanel, targetPanel == LineRenenderPanel);
     }
 
     private void SetPanelActive(GameObject panel, bool active)

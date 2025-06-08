@@ -35,7 +35,7 @@ public class SculptFunction : MonoBehaviour
     public InputField GridInputField;
     public Button GenerateButton, ResetButton;
     public FlexibleColorPicker fcp;
-    public Material ColorfulMaterial;
+    public Material ModelMaterial;
 
     [Header("defaultValue")]
     public float defaultCubeSize = 1f;
@@ -81,9 +81,9 @@ public class SculptFunction : MonoBehaviour
         SetupSliderAndInputEvents();
         dynamicForwardDistance = baseForwardDistance;
 
-        if (fcp != null && ColorfulMaterial != null)
+        if (fcp != null && ModelMaterial != null)
         {
-            fcp.color = ColorfulMaterial.color;
+            fcp.color = ModelMaterial.color;
             fcp.onColorChange.AddListener(OnChangeColor);
         }
 
@@ -207,7 +207,7 @@ public class SculptFunction : MonoBehaviour
         fcp.onColorChange.RemoveListener(OnChangeColor);
         fcp.color = objectColor;
         fcp.onColorChange.AddListener(OnChangeColor);
-        ColorfulMaterial.color = objectColor;
+        ModelMaterial.color = objectColor;
 
         ApplyColorToModel(obj, objectColor);
     }
@@ -321,7 +321,7 @@ public class SculptFunction : MonoBehaviour
 
     private void OnChangeColor(Color co)
     {
-        ColorfulMaterial.color = co;
+        ModelMaterial.color = co;
         ApplyColorToCurrentModel(co);
     }
 
@@ -368,7 +368,7 @@ public class SculptFunction : MonoBehaviour
             MeshRenderer renderer = model.GetComponent<MeshRenderer>();
             if (renderer != null)
             {
-                Material newMaterial = new Material(ColorfulMaterial);
+                Material newMaterial = new Material(ModelMaterial);
                 newMaterial.color = color;
 
                 if (newMaterial.HasProperty("_Color"))
@@ -391,7 +391,7 @@ public class SculptFunction : MonoBehaviour
             {
                 if (renderer != null)
                 {
-                    Material newMaterial = new Material(ColorfulMaterial);
+                    Material newMaterial = new Material(ModelMaterial);
                     newMaterial.color = color;
 
                     if (newMaterial.HasProperty("_Color"))
@@ -437,6 +437,10 @@ public class SculptFunction : MonoBehaviour
         uiManager.SculptPanel1?.SetActive(false);
         uiManager.SculptPanel2?.SetActive(true);
         uiManager.FunctionUISwitch();
+
+        uiManager.isGroundChecking = true;
+        uiManager.lightshipNavMeshRenderer.enabled = true;
+        uiManager.GroundCheck.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
 
         CreatePreviewModel();
         UpdateRotationYUI();
@@ -1232,6 +1236,8 @@ public class SculptFunction : MonoBehaviour
         uiManager.BackButton?.SetActive(false);
 
         isEditingExistingObject = false;
+        uiManager.inSculpt = false;
+        uiManager.lightshipNavMeshRenderer.enabled = false;
     }
 
     void ResetAllParameters()
@@ -1313,7 +1319,7 @@ public class SculptFunction : MonoBehaviour
             isEditingExistingObject = false;
             ClearButton.SetActive(false);
 
-            uiManager.SwitchToPanel(uiManager.UIHome);
+            SwitchToHome();
         }
     }
 
