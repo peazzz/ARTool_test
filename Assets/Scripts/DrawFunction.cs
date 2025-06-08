@@ -8,6 +8,7 @@ public class DrawFunction : MonoBehaviour
     public Camera arCamera;
     public UIManager uiManager;
     public FlexibleColorPicker fcp;
+    public GameObject DrawPanel;
 
     [Header("ModeSelection")]
     public Button _3DDraw;
@@ -79,6 +80,7 @@ public class DrawFunction : MonoBehaviour
             in3DDraw = true;
             in3DDraw_SL = false;
             in2DDraw = false;
+            DrawPanel.SetActive(true);
             uiManager.SwitchToPanel(uiManager.DrawPanel2);
         });
 
@@ -86,6 +88,7 @@ public class DrawFunction : MonoBehaviour
             in3DDraw_SL = true;
             in3DDraw = false;     // 確保其他模式為false
             in2DDraw = false;
+            DrawPanel.SetActive(true);
             uiManager.SwitchToPanel(uiManager.DrawPanel2);
         });
 

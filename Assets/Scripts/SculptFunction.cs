@@ -53,7 +53,7 @@ public class SculptFunction : MonoBehaviour
     private GameObject previewModel, finalModel;
     private GameObject currentSelectedObject;
     private Material originalMaterial;
-    private bool isEditingExistingObject = false;
+    public bool isEditingExistingObject = false;
     private float mainScale = 1f, heightOffset = 0f, dynamicForwardDistance, currentRotationY = 0f;
     private Vector3 individualScale = Vector3.one;
     private Vector3 modelRotation = Vector3.zero;
@@ -149,6 +149,7 @@ public class SculptFunction : MonoBehaviour
 
     public void SelectObject(GameObject obj)
     {
+        uiManager.inSculpt = true;
         DeselectCurrentObject();
         currentSelectedObject = obj;
         isEditingExistingObject = true;
@@ -1321,6 +1322,20 @@ public class SculptFunction : MonoBehaviour
 
             SwitchToHome();
         }
+    }
+
+    public void CancelEditChanges()
+    {
+        if (!isEditingExistingObject || currentSelectedObject == null) return;
+
+        currentSelectedObject.transform.localScale = originalObjectScale;
+        currentSelectedObject.transform.rotation = Quaternion.Euler(originalObjectRotation);
+        currentSelectedObject.transform.position = originalObjectPosition;
+
+        RestoreObjectOriginalColor(currentSelectedObject);
+        SetLayerRecursively(currentSelectedObject, originalLayer);
+        DeselectCurrentObject();
+        isEditingExistingObject = false;
     }
 
     public void UpdateAllUIValues()

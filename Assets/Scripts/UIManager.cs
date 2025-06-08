@@ -10,7 +10,15 @@ public class UIManager : MonoBehaviour
     public RectTransform FounctionUI_RT;
     public RectTransform HandleArrow_RT;
     public GameObject BackButton;
-    public GameObject GroundCheck;
+
+    [Header("ScriptTool")]
+    public Slider BT_S;
+    public Slider MT_S;
+    public Slider ST_S;
+
+    public GameObject BT_B;
+    public GameObject MT_B;
+    public GameObject ST_B;
 
     [Header("MainPanel")]
     public GameObject UIHome;
@@ -32,13 +40,14 @@ public class UIManager : MonoBehaviour
     public Button RotationPageButton;
     public Button OtherPageButton;
     public GameObject ColorPageButtonForSculpt;
-    public GameObject ColorPageButtonForDraw;
-
+    public GameObject GroundCheck;
     public GameObject AE, SP, RP, OP;
 
     [Header("SculptFunction")]
     public SculptFunction sculptFunction;
     public DrawFunction drawFunction;
+
+    public GameObject ColorPageButtonForDraw;
 
     [Header("Component")]
     public LightshipNavMeshRenderer lightshipNavMeshRenderer;
@@ -219,18 +228,37 @@ public class UIManager : MonoBehaviour
     {
         if (inSculpt)
         {
-            if (isInColorPage)
+            if (!sculptFunction.isEditingExistingObject)
             {
-                BackToPanel2();
+                if (isInColorPage)
+                {
+                    BackToPanel2();
+                }
+                else
+                {
+                    SwitchToPanel(UIHome);
+                    SetPanelActive(BackButton, false);
+
+                    sculptFunction.OnBackButtonClicked();
+                    inSculpt = false;
+                    lightshipNavMeshRenderer.enabled = false;
+                }
             }
             else
             {
-                SwitchToPanel(UIHome);
-                SetPanelActive(BackButton, false);
+                if (isInColorPage)
+                {
+                    BackToPanel2();
+                }
+                else
+                {
+                    sculptFunction.CancelEditChanges();
 
-                sculptFunction.OnBackButtonClicked();
-                inSculpt = false;
-                lightshipNavMeshRenderer.enabled = false;
+                    SwitchToPanel(UIHome);
+                    SetPanelActive(BackButton, false);
+                    inSculpt = false;
+                    lightshipNavMeshRenderer.enabled = false;
+                }
             }
         }
         else if (inDraw)
@@ -245,9 +273,10 @@ public class UIManager : MonoBehaviour
                 drawFunction.in3DDraw = false;
                 drawFunction.in3DDraw_SL = false;
                 drawFunction.in2DDraw = false;
+                drawFunction.DrawPanel.SetActive(false);
             }
             else if (LineRenenderPanel.activeSelf)
-            {
+            {   
                 SwitchToPanel(DrawPanel2);
                 drawFunction.LineBrush = false;
                 drawFunction.ParticleBrush = false;
