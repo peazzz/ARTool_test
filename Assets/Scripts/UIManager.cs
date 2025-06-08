@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using Niantic.Lightship.AR.NavigationMesh;
 
 public class UIManager : MonoBehaviour
 {
@@ -9,6 +10,7 @@ public class UIManager : MonoBehaviour
     public RectTransform FounctionUI_RT;
     public RectTransform HandleArrow_RT;
     public GameObject BackButton;
+    public GameObject GroundCheck;
 
     [Header("MainPanel")]
     public GameObject UIHome;
@@ -31,8 +33,12 @@ public class UIManager : MonoBehaviour
     [Header("SculptFunction")]
     public SculptFunction sculptFunction;
 
+    [Header("Component")]
+    public LightshipNavMeshRenderer lightshipNavMeshRenderer;
+
     private bool UI_on = false;
     public bool isInColorPage = false;
+    public bool isGroundChecking = true;
 
     private readonly Vector3 UI_SHOW_POSITION = Vector3.zero;
     private readonly Vector3 UI_HIDE_POSITION = new Vector3(0, -400, 0);
@@ -43,11 +49,15 @@ public class UIManager : MonoBehaviour
     {
         InitializeUI();
         SetupAllButtonEvents();
+        GroundCheckFunction();
     }
 
     void Update()
     {
-        ColorPageButton.GetComponent<Image>().color = sculptFunction.fcp.color;
+        if (ColorPage != null && ColorPage.activeInHierarchy)
+        {
+            ColorPageButton.GetComponent<Image>().color = sculptFunction.fcp.color;
+        }
     }
 
     void InitializeUI()
@@ -68,6 +78,7 @@ public class UIManager : MonoBehaviour
         RotationPageButton?.onClick.AddListener(() => RotationPageSelect());
         OtherPageButton?.onClick.AddListener(() => OtherPageSelect());
         ColorPageButton.GetComponent<Button>().onClick.AddListener(() => ColorPageSelect());
+        GroundCheck.GetComponent<Button>().onClick.AddListener(() => GroundCheckFunction());
     }
 
     public void SculptButton()
@@ -126,6 +137,33 @@ public class UIManager : MonoBehaviour
         SP.SetActive(false);
         RP.SetActive(false);
         OP.SetActive(false);
+
+        if (sculptFunction != null)
+        {
+            StartCoroutine(DelayedColorSync());
+        }
+    }
+
+    void GroundCheckFunction()
+    {
+        isGroundChecking = !isGroundChecking;
+
+        if (isGroundChecking)
+        {
+            lightshipNavMeshRenderer.enabled = true;
+            GroundCheck.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
+        }
+        else
+        {
+            lightshipNavMeshRenderer.enabled = false;
+            GroundCheck.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
+        }
+    }
+
+    private IEnumerator DelayedColorSync()
+    {
+        yield return new WaitForEndOfFrame();
+        sculptFunction.SyncCurrentModelColorToUI();
     }
 
     void BackToPanel2()
@@ -137,6 +175,11 @@ public class UIManager : MonoBehaviour
         ColorPage.SetActive(false);
         OtherPage.SetActive(true);
         isInColorPage = false;
+
+        if (sculptFunction != null)
+        {
+            sculptFunction.SyncCurrentModelColorToUI();
+        }
     }
 
     public void Back()
@@ -177,7 +220,7 @@ public class UIManager : MonoBehaviour
         }
     }
 
-    private void SwitchToPanel(GameObject targetPanel)
+    public void SwitchToPanel(GameObject targetPanel)
     {
         SetPanelActive(UIHome, targetPanel == UIHome);
         SetPanelActive(SculptPanel1, targetPanel == SculptPanel1);

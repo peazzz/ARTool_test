@@ -2,7 +2,6 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
-using Niantic.Lightship.AR.NavigationMesh;
 
 public class SculptFunction : MonoBehaviour
 {
@@ -15,7 +14,6 @@ public class SculptFunction : MonoBehaviour
     public UIManager uiManager;
 
     [Header("NavMeshSetting")]
-    [SerializeField] private LightshipNavMeshManager navMeshManager;
     [SerializeField] private float baseForwardDistance = 1.5f;
     [SerializeField] private float downwardCheckDistance = 10f;
     [SerializeField] private float defaultHeightOffset = 0.5f;
@@ -88,6 +86,8 @@ public class SculptFunction : MonoBehaviour
             fcp.color = ColorfulMaterial.color;
             fcp.onColorChange.AddListener(OnChangeColor);
         }
+
+        ClearButton.SetActive(false);
     }
 
     void Update()
@@ -149,7 +149,6 @@ public class SculptFunction : MonoBehaviour
 
     public void SelectObject(GameObject obj)
     {
-        ClearButton.SetActive(false);
         DeselectCurrentObject();
         currentSelectedObject = obj;
         isEditingExistingObject = true;
@@ -180,6 +179,8 @@ public class SculptFunction : MonoBehaviour
         uiManager.SculptPanel2?.SetActive(true);
         uiManager.UIHome?.SetActive(false);
         uiManager.BackButton?.SetActive(true);
+        ClearButton.SetActive(true);
+        GridInputField.interactable = false;
 
         UpdateAllUIValues();
         SetDefaultPositionLockState(true);
@@ -203,7 +204,6 @@ public class SculptFunction : MonoBehaviour
                 objectColor = renderer.material.color;
         }
 
-        // 更新 UI
         fcp.onColorChange.RemoveListener(OnChangeColor);
         fcp.color = objectColor;
         fcp.onColorChange.AddListener(OnChangeColor);
@@ -217,12 +217,24 @@ public class SculptFunction : MonoBehaviour
         if (currentSelectedObject != null)
         {
             SetObjectGlow(currentSelectedObject, false);
-            RestoreObjectOriginalColor(currentSelectedObject);
-
             SetLayerRecursively(currentSelectedObject, originalLayer);
             currentSelectedObject = null;
         }
         isEditingExistingObject = false;
+        ClearButton.SetActive(false);
+        GridInputField.interactable = true;
+    }
+
+    public void SyncCurrentModelColorToUI()
+    {
+        if (isEditingExistingObject && currentSelectedObject != null)
+        {
+            ApplyColorToModel(currentSelectedObject, fcp.color);
+        }
+        else if (previewModel != null)
+        {
+            ApplyColorToModel(previewModel, fcp.color);
+        }
     }
 
     void SetObjectGlow(GameObject obj, bool glow)
@@ -233,16 +245,6 @@ public class SculptFunction : MonoBehaviour
             if (glow)
             {
                 originalMaterial = renderer.material;
-                // 不改變材質，只記錄狀態
-                Debug.Log($"Selected object: {obj.name}");
-            }
-            else
-            {
-                // 確保材質恢復原狀
-                if (originalMaterial != null)
-                {
-                    renderer.material = originalMaterial;
-                }
             }
         }
     }
@@ -290,7 +292,6 @@ public class SculptFunction : MonoBehaviour
 
         GenerateButton?.onClick.AddListener(OnGenerateButtonClicked);
         ResetButton?.onClick.AddListener(OnResetButtonClicked);
-        //uiManager.BackButton?.GetComponent<Button>().onClick.AddListener(OnBackButtonClicked);
         PositionLockButton.GetComponent<Button>().onClick.AddListener(TogglePositionLock);
     }
 
@@ -324,11 +325,26 @@ public class SculptFunction : MonoBehaviour
         ApplyColorToCurrentModel(co);
     }
 
+    private IEnumerator SyncColorWithDelay()
+    {
+        yield return null;
+        
+        if (isEditingExistingObject && currentSelectedObject != null)
+        {
+            Debug.Log($"Syncing color to current object: {fcp.color}");
+            ApplyColorToModel(currentSelectedObject, fcp.color);
+        }
+        else if (previewModel != null)
+        {
+            Debug.Log($"Syncing color to preview model: {fcp.color}");
+            ApplyColorToModel(previewModel, fcp.color);
+        }
+    }
+
     private void ApplyColorToCurrentModel(Color color)
     {
         GameObject targetModel = null;
 
-        // 判斷當前要套用顏色的模型
         if (isEditingExistingObject && currentSelectedObject != null)
         {
             targetModel = currentSelectedObject;
@@ -344,22 +360,17 @@ public class SculptFunction : MonoBehaviour
         }
     }
 
-    // 3. 新增方法：套用顏色到指定模型
     private void ApplyColorToModel(GameObject model, Color color)
     {
-        // 檢查是否是 CubeCarvingSystem 生成的模型
         CubeCarvingSystem carvingSystem = model.GetComponent<CubeCarvingSystem>();
         if (carvingSystem != null)
         {
-            // 直接設定 CubeCarvingSystem 的材質顏色
             MeshRenderer renderer = model.GetComponent<MeshRenderer>();
             if (renderer != null)
             {
-                // 創建新的材質實例，避免影響原始材質
                 Material newMaterial = new Material(ColorfulMaterial);
                 newMaterial.color = color;
 
-                // 設定一些常見的顏色屬性
                 if (newMaterial.HasProperty("_Color"))
                     newMaterial.SetColor("_Color", color);
                 if (newMaterial.HasProperty("_BaseColor"))
@@ -370,13 +381,10 @@ public class SculptFunction : MonoBehaviour
                     newMaterial.SetColor("_Albedo", color);
 
                 renderer.material = newMaterial;
-
-                Debug.Log($"Applied color {color} to CubeCarvingSystem: {model.name}");
             }
         }
         else
         {
-            // 處理一般模型（包括子物件）
             MeshRenderer[] renderers = model.GetComponentsInChildren<MeshRenderer>();
 
             foreach (MeshRenderer renderer in renderers)
@@ -396,8 +404,6 @@ public class SculptFunction : MonoBehaviour
                         newMaterial.SetColor("_Albedo", color);
 
                     renderer.material = newMaterial;
-
-                    Debug.Log($"Applied color {color} to {renderer.gameObject.name}");
                 }
             }
         }
@@ -423,7 +429,6 @@ public class SculptFunction : MonoBehaviour
     #region Shape&Generate
     void OnShapeSelected(VoxelShape shape)
     {
-        ClearButton.SetActive(false);
         selectedShape = shape;
         currentRotationY = 0f;
         modelRotation = Vector3.zero;
@@ -461,7 +466,6 @@ public class SculptFunction : MonoBehaviour
 
     private IEnumerator ApplyColorAfterMeshGeneration(GameObject model, Color color)
     {
-        // 等待兩幀，確保 CubeCarvingSystem 已完成 mesh 生成
         yield return null;
         yield return null;
 
@@ -498,7 +502,6 @@ public class SculptFunction : MonoBehaviour
         {
             SetMaterialAndLayer(newCarvingSystem, finalMaterial, "SculptObject");
             StartCoroutine(InitializeModelStatAfterMesh(newCarvingSystem, shapeType));
-            ClearButton.SetActive(true);
         }
 
         return newCarvingSystem;
@@ -667,7 +670,7 @@ public class SculptFunction : MonoBehaviour
         }
 
         Vector3 targetPosition;
-        if (cachedHitResult)
+        if (cachedHitResult && uiManager.isGroundChecking)
         {
             targetPosition = GetGroundPositionForObject(cachedHit.point, targetObject);
         }
@@ -1218,7 +1221,6 @@ public class SculptFunction : MonoBehaviour
                 Destroy(previewModel);
                 previewModel = null;
             }
-            //SwitchToHome();
         }
     }
 
@@ -1228,35 +1230,6 @@ public class SculptFunction : MonoBehaviour
         uiManager.SculptPanel2?.SetActive(false);
         uiManager.UIHome?.SetActive(true);
         uiManager.BackButton?.SetActive(false);
-
-        GameObject[] sculptObjects = GameObject.FindGameObjectsWithTag("SculptObject");
-        if (sculptObjects.Length > 0)
-        {
-            ClearButton.SetActive(true);
-        }
-        else
-        {
-            int sculptLayer = LayerMask.NameToLayer("SculptObject");
-            if (sculptLayer != -1)
-            {
-                GameObject[] allObjects = FindObjectsOfType<GameObject>();
-                bool hasObjects = false;
-                for (int i = 0; i < allObjects.Length; i++)
-                {
-                    if (allObjects[i].layer == sculptLayer)
-                    {
-                        hasObjects = true;
-                        break;
-                    }
-                }
-                ClearButton.SetActive(hasObjects);
-            }
-            else
-            {
-                ClearButton.SetActive(false);
-            }
-        }
-
 
         isEditingExistingObject = false;
     }
@@ -1333,44 +1306,15 @@ public class SculptFunction : MonoBehaviour
 
     public void Clear()
     {
-        DeselectCurrentObject();
+        if (currentSelectedObject != null)
+        {
+            Destroy(currentSelectedObject);
+            currentSelectedObject = null;
+            isEditingExistingObject = false;
+            ClearButton.SetActive(false);
 
-        GameObject[] allSculptObjects = GameObject.FindGameObjectsWithTag("SculptObject");
-        if (allSculptObjects.Length > 0)
-        {
-            for (int i = 0; i < allSculptObjects.Length; i++)
-            {
-                Destroy(allSculptObjects[i]);
-            }
+            uiManager.SwitchToPanel(uiManager.UIHome);
         }
-        else
-        {
-            int sculptLayer = LayerMask.NameToLayer("SculptObject");
-            if (sculptLayer != -1)
-            {
-                GameObject[] allObjects = FindObjectsOfType<GameObject>();
-                for (int i = 0; i < allObjects.Length; i++)
-                {
-                    if (allObjects[i].layer == sculptLayer)
-                    {
-                        Destroy(allObjects[i]);
-                    }
-                }
-            }
-        }
-
-        if (previewModel != null)
-        {
-            Destroy(previewModel);
-            previewModel = null;
-        }
-        if (finalModel != null)
-        {
-            Destroy(finalModel);
-            finalModel = null;
-        }
-
-        ClearButton.SetActive(false);
     }
 
     public void UpdateAllUIValues()
