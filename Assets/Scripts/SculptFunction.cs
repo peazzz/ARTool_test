@@ -18,6 +18,14 @@ public class SculptFunction : MonoBehaviour
     [SerializeField] private float downwardCheckDistance = 10f;
     [SerializeField] private float defaultHeightOffset = 0.5f;
 
+    [Header("SculptTool")]
+    public GameObject CuttingTool;
+    public GameObject CuttingToolButton;
+
+    public GameObject BTHandle;
+    public Slider BT_S;
+    public GameObject BT_B;
+
     [Header("ShapeButton")]
     public Button ShapeButton_Cube, ShapeButton_Sphere, ShapeButton_Capsule, ShapeButton_Cylinder;
 
@@ -69,6 +77,7 @@ public class SculptFunction : MonoBehaviour
     private bool positionLock;
     private Vector3 lockedPosition;
     private int originalLayer;
+    private bool useTool;
 
     private Vector3 originalObjectScale;
     private Vector3 originalObjectRotation;
@@ -294,6 +303,11 @@ public class SculptFunction : MonoBehaviour
         GenerateButton?.onClick.AddListener(OnGenerateButtonClicked);
         ResetButton?.onClick.AddListener(OnResetButtonClicked);
         PositionLockButton.GetComponent<Button>().onClick.AddListener(TogglePositionLock);
+        CuttingToolButton.GetComponent<Button>().onClick.AddListener(ToggleSculptTool);
+        BT_S?.onValueChanged.AddListener((value) => {
+            BT_B.GetComponent<Image>().color = new Color(1, 1, 1, value > 0 ? 1 : 0);
+            UpdateCuttingToolPosition(value);
+        });
     }
 
     void SetupSliderAndInputEvents()
@@ -590,6 +604,34 @@ public class SculptFunction : MonoBehaviour
         {
             obj.tag = "SculptObject";
         }
+    }
+
+    private void ToggleSculptTool()
+    {
+        useTool = !useTool;
+        if (useTool)
+        {
+            CuttingToolButton.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
+            BTHandle.SetActive(true);
+            CuttingTool.SetActive(true);
+        }
+        else
+        {
+            CuttingToolButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
+            BTHandle.SetActive(false);
+            CuttingTool.SetActive(false);
+        }
+    }
+
+    private void UpdateCuttingToolPosition(float sliderValue)
+    {
+        if (CuttingTool == null) return;
+
+        Vector3 startPosition = new Vector3(0.5f, -0.85f, 0.6f);
+        Vector3 endPosition = new Vector3(0.3f, -0.45f, 1.5f);
+
+        Vector3 newPosition = Vector3.Lerp(startPosition, endPosition, sliderValue);
+        CuttingTool.transform.localPosition = newPosition;
     }
     #endregion
 

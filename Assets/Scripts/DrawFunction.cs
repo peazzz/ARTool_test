@@ -19,8 +19,10 @@ public class DrawFunction : MonoBehaviour
     public Button LBrush;
     public Button PBrush;
 
-
+    public Button UndoButton;
     public Button ResetButton;
+    public Button FinishButton;
+    public Button ClearAllButton;
 
     public Slider WidthSlider;
     public Slider DistanceSlider;
@@ -66,10 +68,11 @@ public class DrawFunction : MonoBehaviour
         SetupAllButtonEvents();
         InitializeUI();
         SetupUIListeners();
-
+        
         if (fcp != null && LineMaterial != null)
         {
-            fcp.color = LineMaterial.color;
+            fcp.color = new Color(1, 1, 1, 1);
+            LineMaterial.color = fcp.color;
             fcp.onColorChange.AddListener(OnChangeColor);
         }
     }
@@ -104,7 +107,10 @@ public class DrawFunction : MonoBehaviour
         });
         //PBrush?.onClick.AddListener(() => OnShapeSelected(VoxelShape.Cylinder));
 
+        UndoButton?.onClick.AddListener(Undo);
         ResetButton?.onClick.AddListener(OnResetButtonClicked);
+        FinishButton?.onClick.AddListener(OnFinishButtonClicked);
+        ClearAllButton?.onClick.AddListener(ClearScreen);
     }
 
     void InitializeUI()
@@ -197,10 +203,11 @@ public class DrawFunction : MonoBehaviour
         lineRenderer.positionCount = 1;
         lineRenderer.SetPosition(0, anchor);
 
-        // 應用線條寬度
+        Material lineMaterialInstance = new Material(LineMaterial);
+        lineRenderer.material = lineMaterialInstance;
+
         lineRenderer.startWidth = lineWidth;
         lineRenderer.endWidth = lineWidth;
-        lineRenderer.material = LineMaterial;
 
         startLine = true;
         lineList.Add(lineRenderer);
@@ -403,5 +410,47 @@ public class DrawFunction : MonoBehaviour
 
     void OnResetButtonClicked()
     {
+        lineWidth = 0.02f;
+        if (WidthSlider != null)
+            WidthSlider.value = lineWidth;
+
+        cameraDistance = 0.3f;
+        if (DistanceSlider != null)
+            DistanceSlider.value = cameraDistance;
+
+        qualityThreshold = 0.01f;
+        if (QualitySlider != null)
+        {
+            float normalizedActual = (qualityThreshold - 0.001f) / (0.05f - 0.001f);
+            float displayQuality = 0.01f + (1f - normalizedActual) * (1f - 0.01f);
+            QualitySlider.value = displayQuality;
+        }
+
+        Color defaultColor = new Color(1f, 1f, 1f, 1f);
+        LineMaterial.color = defaultColor;
+        if (fcp != null)
+            fcp.color = defaultColor;
+
+        UpdateInputFields();
+        ApplyWidthToCurrentLine();
+    }
+
+    void OnFinishButtonClicked()
+    {
+        uiManager.inDraw = false;
+        uiManager.isInColorPage = false;
+
+        in3DDraw = false;
+        in3DDraw_SL = false;
+        in2DDraw = false;
+        LineBrush = false;
+        ParticleBrush = false;
+
+        DrawPanel.SetActive(false);
+        uiManager.DrawPanel1?.SetActive(false);
+        uiManager.DrawPanel2?.SetActive(false);
+        uiManager.LineRenenderPanel?.SetActive(false);
+        uiManager.UIHome?.SetActive(true);
+        uiManager.BackButton?.SetActive(false);
     }
 }

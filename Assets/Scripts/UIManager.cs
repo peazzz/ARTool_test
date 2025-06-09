@@ -11,15 +11,6 @@ public class UIManager : MonoBehaviour
     public RectTransform HandleArrow_RT;
     public GameObject BackButton;
 
-    [Header("ScriptTool")]
-    public Slider BT_S;
-    public Slider MT_S;
-    public Slider ST_S;
-
-    public GameObject BT_B;
-    public GameObject MT_B;
-    public GameObject ST_B;
-
     [Header("MainPanel")]
     public GameObject UIHome;
     public GameObject SculptPanel1;
@@ -34,7 +25,6 @@ public class UIManager : MonoBehaviour
     public GameObject RotationPage;
     public GameObject OtherPage;
     public GameObject ColorPage1;
-    public GameObject ColorPage2;
 
     public Button ScalePageButton;
     public Button RotationPageButton;
@@ -43,11 +33,14 @@ public class UIManager : MonoBehaviour
     public GameObject GroundCheck;
     public GameObject AE, SP, RP, OP;
 
-    [Header("SculptFunction")]
+    [Header("LineRenenderPanel")]
+    public GameObject BasicEditPage;
+    public GameObject ColorPage2;
+    public GameObject ColorPageButtonForDraw;
+
+    [Header("Function")]
     public SculptFunction sculptFunction;
     public DrawFunction drawFunction;
-
-    public GameObject ColorPageButtonForDraw;
 
     [Header("Component")]
     public LightshipNavMeshRenderer lightshipNavMeshRenderer;
@@ -183,7 +176,7 @@ public class UIManager : MonoBehaviour
     {
         isInColorPage = true;
         ColorPage2.SetActive(true);
-        LineRenenderPanel.SetActive(false);
+        BasicEditPage.SetActive(false);
     }
 
     void GroundCheckFunction()
@@ -209,7 +202,7 @@ public class UIManager : MonoBehaviour
     }
 
     void BackToPanel2()
-    {   
+    {
         AE.SetActive(true);
         SP.SetActive(true);
         RP.SetActive(true);
@@ -276,10 +269,19 @@ public class UIManager : MonoBehaviour
                 drawFunction.DrawPanel.SetActive(false);
             }
             else if (LineRenenderPanel.activeSelf)
-            {   
-                SwitchToPanel(DrawPanel2);
-                drawFunction.LineBrush = false;
-                drawFunction.ParticleBrush = false;
+            {
+                if (isInColorPage)
+                {
+                    BasicEditPage.SetActive(true);
+                    ColorPage2.SetActive(false);
+                    isInColorPage = false;
+                }
+                else
+                {
+                    SwitchToPanel(DrawPanel2);
+                    drawFunction.LineBrush = false;
+                    drawFunction.ParticleBrush = false;
+                }
             }
         }
     }
