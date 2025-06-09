@@ -33,6 +33,7 @@ public class DrawFunction : MonoBehaviour
     public List<ParticleSystem> particleList = new List<ParticleSystem>();
     private ParticleSystem currentParticleSystem;
     private bool particleActive = false;
+    private Vector3 lastParticlePosition;
 
     public Button UndoButton;
     public Button ResetButton;
@@ -40,12 +41,14 @@ public class DrawFunction : MonoBehaviour
     public Button ClearAllButton;
 
     public Slider WidthSlider;
+    public Slider ScaleSlider;
     public Slider DistanceSlider;
-    public Slider QualitySlider;
+    public Slider GapSlider;
 
     public InputField WidthInputField;
+    public InputField ScaleInputField;
     public InputField DistanceInputField;
-    public InputField QualityInputField;
+    public InputField GapInputField;
 
     public Material LineMaterial;
 
@@ -74,8 +77,9 @@ public class DrawFunction : MonoBehaviour
     // 控制參數
     [Header("Line Settings")]
     public float lineWidth = 0.02f;
+    public float ParticleScale = 0.02f;
     public float cameraDistance = 0.3f;
-    public float qualityThreshold = 0.01f; // 兩點間最小距離
+    public float gapThreshold = 0.01f; // 兩點間最小距離
 
     void Start()
     {
@@ -132,6 +136,13 @@ public class DrawFunction : MonoBehaviour
             WidthSlider.maxValue = 0.1f;
         }
 
+        if (ScaleSlider != null)
+        {
+            ScaleSlider.value = ParticleScale;
+            ScaleSlider.minValue = 0.001f;
+            ScaleSlider.maxValue = 0.1f;
+        }
+
         if (DistanceSlider != null)
         {
             DistanceSlider.value = cameraDistance;
@@ -139,14 +150,11 @@ public class DrawFunction : MonoBehaviour
             DistanceSlider.maxValue = 2.0f;
         }
 
-        if (QualitySlider != null)
+        if (GapSlider != null)
         {
-            // 將實際值(0.05f~0.001f)轉換為顯示值(0.01~1)用於Slider
-            float normalizedActual = (qualityThreshold - 0.001f) / (0.05f - 0.001f); // 0~1
-            float displayQuality = 0.01f + (1f - normalizedActual) * (1f - 0.01f); // 反向計算
-            QualitySlider.value = displayQuality;
-            QualitySlider.minValue = 0.01f;
-            QualitySlider.maxValue = 1.0f;
+            GapSlider.value = gapThreshold;
+            GapSlider.minValue = 0.001f;  // 最小間隔
+            GapSlider.maxValue = 0.1f;
         }
 
         // 同步InputField
@@ -159,21 +167,27 @@ public class DrawFunction : MonoBehaviour
         if (WidthSlider != null)
             WidthSlider.onValueChanged.AddListener(OnWidthSliderChanged);
 
+        if (ScaleSlider != null)
+            ScaleSlider.onValueChanged.AddListener(OnScaleSliderChanged);
+
         if (DistanceSlider != null)
             DistanceSlider.onValueChanged.AddListener(OnDistanceSliderChanged);
 
-        if (QualitySlider != null)
-            QualitySlider.onValueChanged.AddListener(OnQualitySliderChanged);
+        if (GapSlider != null)
+            GapSlider.onValueChanged.AddListener(OnGapSliderChanged);
 
         // InputField事件
         if (WidthInputField != null)
             WidthInputField.onEndEdit.AddListener(OnWidthInputChanged);
 
+        if (ScaleInputField != null)
+            ScaleInputField.onEndEdit.AddListener(OnScaleInputChanged);
+
         if (DistanceInputField != null)
             DistanceInputField.onEndEdit.AddListener(OnDistanceInputChanged);
 
-        if (QualityInputField != null)
-            QualityInputField.onEndEdit.AddListener(OnQualityInputChanged);
+        if (GapInputField != null)
+            GapInputField.onEndEdit.AddListener(OnGapInputChanged);
     }
 
     void Update()
@@ -185,6 +199,12 @@ public class DrawFunction : MonoBehaviour
                 UpdateAnchor();
                 DrawLinewContinue();
             }
+        }
+
+        if (ParticleBrush && particleActive)
+        {
+            UpdateAnchor();
+            DrawParticleContinue();
         }
 
         if (in3DDraw && StraightLine && waitingForSecondPoint && tempLineRenderer != null)
@@ -251,10 +271,10 @@ public class DrawFunction : MonoBehaviour
 
     public void DrawLinewContinue()
     {
-        // 檢查是否滿足quality條件（兩點間距離）
+        // 檢查是否滿足Gap條件（兩點間距離）
         float distance = Vector3.Distance(anchor, lastAnchor);
 
-        if (distance >= qualityThreshold)
+        if (distance >= gapThreshold)
         {
             lineRenderer.positionCount = lineRenderer.positionCount + 1;
             lineRenderer.SetPosition(lineRenderer.positionCount - 1, anchor);
@@ -288,6 +308,55 @@ public class DrawFunction : MonoBehaviour
         else
         {
             Debug.LogError("Particle Prefab doesn't have ParticleSystem component!");
+        }
+    }
+
+    public void DrawParticleContinue()
+    {
+        float distance = Vector3.Distance(anchor, lastParticlePosition);
+
+        // 使用與線條相同的品質閾值來控制粒子生成間隔
+        if (distance >= gapThreshold)
+        {
+            CreateParticleAtPosition(anchor);
+            lastParticlePosition = anchor;
+        }
+    }
+
+    void CreateParticleAtPosition(Vector3 position)
+    {
+        if (particlePrefab == null)
+        {
+            Debug.LogError("Particle Prefab is not assigned!");
+            return;
+        }
+
+        GameObject tempParticle = Instantiate(particlePrefab);
+        tempParticle.transform.SetParent(linePool);
+        tempParticle.transform.position = position;
+        tempParticle.transform.localScale = Vector3.one;
+
+        ParticleSystem newParticleSystem = tempParticle.GetComponent<ParticleSystem>();
+
+        if (newParticleSystem != null)
+        {
+            // 設定粒子系統參數
+            var main = newParticleSystem.main;
+            main.startColor = LineMaterial.color;
+
+            // 可以設定粒子的其他屬性
+            main.startSize = ParticleScale * 5f;
+
+            particleList.Add(newParticleSystem);
+
+            // 設定粒子系統在播放完畢後自動停止
+            var stopAction = newParticleSystem.main;
+            stopAction.stopAction = ParticleSystemStopAction.Destroy;
+        }
+        else
+        {
+            Debug.LogError("Particle Prefab doesn't have ParticleSystem component!");
+            Destroy(tempParticle);
         }
     }
 
@@ -396,17 +465,21 @@ public class DrawFunction : MonoBehaviour
         ApplyWidthToCurrentLine();
     }
 
+    public void OnScaleSliderChanged(float value)
+    {
+        ParticleScale = value;
+        UpdateInputFields();
+    }
+
     public void OnDistanceSliderChanged(float value)
     {
         cameraDistance = value;
         UpdateInputFields();
     }
 
-    public void OnQualitySliderChanged(float value)
+    public void OnGapSliderChanged(float value)
     {
-        // Slider值是顯示值(0.01~1)，需要轉換為實際值(0.05f~0.001f)
-        float normalizedDisplay = (value - 0.01f) / (1f - 0.01f); // 0~1
-        qualityThreshold = Mathf.Lerp(0.05f, 0.001f, normalizedDisplay); // 反向插值
+        gapThreshold = value;
         UpdateInputFields();
     }
 
@@ -428,6 +501,21 @@ public class DrawFunction : MonoBehaviour
         UpdateInputFields();
     }
 
+    public void OnScaleInputChanged(string value)
+    {
+        string cleanValue = value.Replace("%", "").Trim();
+
+        if (float.TryParse(cleanValue, out float displayValue))
+        {
+            displayValue = Mathf.Clamp(displayValue, 10f, 500f);
+            float actualValue = (displayValue / 100f) * 0.01f; // 100 = 0.01f
+            ParticleScale = actualValue;
+            if (ScaleSlider != null)
+                ScaleSlider.value = ParticleScale;
+        }
+        UpdateInputFields();
+    }
+
     public void OnDistanceInputChanged(string value)
     {
         if (float.TryParse(value, out float newDistance))
@@ -439,20 +527,16 @@ public class DrawFunction : MonoBehaviour
         UpdateInputFields();
     }
 
-    public void OnQualityInputChanged(string value)
+    public void OnGapInputChanged(string value)
     {
-        // 清理輸入值
         string cleanValue = value.Trim();
 
-        if (float.TryParse(cleanValue, out float displayValue))
+        if (float.TryParse(cleanValue, out float inputValue))
         {
-            // 將顯示值(0.01~1)反向轉換為實際值(0.05f~0.001f)
-            displayValue = Mathf.Clamp(displayValue, 0.01f, 1f);
-            float normalizedDisplay = (displayValue - 0.01f) / (1f - 0.01f); // 0~1
-            float actualValue = Mathf.Lerp(0.05f, 0.001f, normalizedDisplay); // 反向插值
-            qualityThreshold = actualValue;
-            if (QualitySlider != null)
-                QualitySlider.value = displayValue; // 直接設定顯示值給Slider
+            // 直接限制在實際範圍內
+            gapThreshold = Mathf.Clamp(inputValue, 0.001f, 0.05f);
+            if (GapSlider != null)
+                GapSlider.value = gapThreshold; // 直接設定實際值給Slider
         }
         UpdateInputFields();
     }
@@ -461,20 +545,22 @@ public class DrawFunction : MonoBehaviour
     {
         if (WidthInputField != null)
         {
-            // 將實際值(0.001f~0.1f)轉換為顯示值(10~1000)
             float displayWidth = (lineWidth / 0.01f) * 100f; // 0.01f = 100
             WidthInputField.text = displayWidth.ToString("F0");
+        }
+
+        if (ScaleInputField != null)
+        {
+            float displayScale = (ParticleScale / 0.01f) * 100f; // 0.01f = 100
+            ScaleInputField.text = displayScale.ToString("F0");
         }
 
         if (DistanceInputField != null)
             DistanceInputField.text = cameraDistance.ToString("F2");
 
-        if (QualityInputField != null)
+        if (GapInputField != null)
         {
-            // 將實際值(0.05f~0.001f)反向轉換為顯示值(0.01~1)
-            float normalizedActual = (qualityThreshold - 0.001f) / (0.05f - 0.001f); // 0~1
-            float displayQuality = 0.01f + (1f - normalizedActual) * (1f - 0.01f); // 反向計算
-            QualityInputField.text = displayQuality.ToString("F2");
+            GapInputField.text = gapThreshold.ToString("F3");
         }
     }
 
@@ -570,20 +656,16 @@ public class DrawFunction : MonoBehaviour
             anchorUpdate = true;
             UpdateAnchor();
             MakeParticleSystem();
+            CreateParticleAtPosition(anchor);
             particleActive = true;
         }
     }
 
     public void StopDrawParticle()
     {
-        if (particleActive && currentParticleSystem != null)
+        if (particleActive)
         {
-            // 停止粒子發射
-            var emission = currentParticleSystem.emission;
-            emission.enabled = false;
-
             particleActive = false;
-            currentParticleSystem = null;
             anchorUpdate = false;
         }
     }
@@ -630,16 +712,18 @@ public class DrawFunction : MonoBehaviour
         if (WidthSlider != null)
             WidthSlider.value = lineWidth;
 
+        ParticleScale = 0.02f;
+        if (ScaleSlider != null)
+            ScaleSlider.value = ParticleScale;
+
         cameraDistance = 0.3f;
         if (DistanceSlider != null)
             DistanceSlider.value = cameraDistance;
 
-        qualityThreshold = 0.01f;
-        if (QualitySlider != null)
+        gapThreshold = 0.01f;
+        if (GapSlider != null)
         {
-            float normalizedActual = (qualityThreshold - 0.001f) / (0.05f - 0.001f);
-            float displayQuality = 0.01f + (1f - normalizedActual) * (1f - 0.01f);
-            QualitySlider.value = displayQuality;
+            GapSlider.value = gapThreshold;
         }
 
         Color defaultColor = new Color(1f, 1f, 1f, 1f);
