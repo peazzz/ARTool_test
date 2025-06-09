@@ -55,7 +55,6 @@ public class SculptFunction : MonoBehaviour
 
     [Header("Debug")]
     [SerializeField] private float raycastCacheTime = 0.15f;
-    [SerializeField] private bool showDebugInfo = false;
 
     private VoxelShape selectedShape;
     private GameObject previewModel, finalModel;

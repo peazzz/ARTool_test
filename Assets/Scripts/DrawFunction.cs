@@ -12,12 +12,27 @@ public class DrawFunction : MonoBehaviour
 
     [Header("ModeSelection")]
     public Button _3DDraw;
-    public Button _3DDraw_SL;
     public Button _2DDraw;
 
     [Header("BrushSelection")]
-    public Button LBrush;
-    public Button PBrush;
+    public GameObject LBrush;
+    public GameObject PBrush;
+
+    public GameObject LineSettingPage;
+    public GameObject ParticleSettingPage;
+
+    [Header("Two Point Line Mode")]
+    public GameObject TwoPointActionButton;
+    public bool StraightLine = false;
+    public bool waitingForSecondPoint = false;
+    private Vector3 firstPoint;
+    public LineRenderer tempLineRenderer;
+
+    [Header("Particle Settings")]
+    public GameObject particlePrefab; // 粒子系統預製體
+    public List<ParticleSystem> particleList = new List<ParticleSystem>();
+    private ParticleSystem currentParticleSystem;
+    private bool particleActive = false;
 
     public Button UndoButton;
     public Button ResetButton;
@@ -52,7 +67,6 @@ public class DrawFunction : MonoBehaviour
     public bool startLine; //already started line or not
 
     public bool in3DDraw;
-    public bool in3DDraw_SL;
     public bool in2DDraw;
     public bool LineBrush;
     public bool ParticleBrush;
@@ -68,7 +82,8 @@ public class DrawFunction : MonoBehaviour
         SetupAllButtonEvents();
         InitializeUI();
         SetupUIListeners();
-        
+        LineBrushSelection();
+
         if (fcp != null && LineMaterial != null)
         {
             fcp.color = new Color(1, 1, 1, 1);
@@ -80,32 +95,27 @@ public class DrawFunction : MonoBehaviour
     void SetupAllButtonEvents()
     {
         _3DDraw?.onClick.AddListener(() => {
+            LineBrush = true;
+            ParticleBrush = false;
             in3DDraw = true;
-            in3DDraw_SL = false;
             in2DDraw = false;
             DrawPanel.SetActive(true);
-            uiManager.SwitchToPanel(uiManager.DrawPanel2);
-        });
-
-        _3DDraw_SL?.onClick.AddListener(() => {
-            in3DDraw_SL = true;
-            in3DDraw = false;     // 確保其他模式為false
-            in2DDraw = false;
-            DrawPanel.SetActive(true);
-            uiManager.SwitchToPanel(uiManager.DrawPanel2);
+            uiManager.SwitchToPanel(uiManager.BrushPanel);
         });
 
         _2DDraw?.onClick.AddListener(() => {
+            LineBrush = true;
+            ParticleBrush = false;
             in2DDraw = true;
             in3DDraw = false;     // 確保其他模式為false
-            in3DDraw_SL = false;
         });
 
-        LBrush?.onClick.AddListener(() => {
-            LineBrush = true;
-            uiManager.SwitchToPanel(uiManager.LineRenenderPanel);
+        LBrush.GetComponent<Button>().onClick.AddListener(() => LineBrushSelection());
+        PBrush.GetComponent<Button>().onClick.AddListener(() => ParticleBrushSelection());
+
+        TwoPointActionButton.GetComponent<Button>().onClick.AddListener(() => {
+            ToggleTwoPointAction();
         });
-        //PBrush?.onClick.AddListener(() => OnShapeSelected(VoxelShape.Cylinder));
 
         UndoButton?.onClick.AddListener(Undo);
         ResetButton?.onClick.AddListener(OnResetButtonClicked);
@@ -176,6 +186,12 @@ public class DrawFunction : MonoBehaviour
                 DrawLinewContinue();
             }
         }
+
+        if (in3DDraw && StraightLine && waitingForSecondPoint && tempLineRenderer != null)
+        {
+            UpdateAnchor();
+            tempLineRenderer.SetPosition(1, anchor);
+        }
     }
 
     void UpdateAnchor()
@@ -186,6 +202,26 @@ public class DrawFunction : MonoBehaviour
             temp.z = cameraDistance; // 使用可調整的距離
             anchor = arCamera.ScreenToWorldPoint(temp);
         }
+    }
+
+    private void LineBrushSelection()
+    {
+        LineBrush = true;
+        ParticleBrush = false;
+        LBrush.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
+        PBrush.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
+        LineSettingPage.SetActive(true);
+        ParticleSettingPage.SetActive(false);
+    }
+
+    private void ParticleBrushSelection()
+    {
+        LineBrush = false;
+        ParticleBrush = true;
+        LBrush.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
+        PBrush.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
+        LineSettingPage.SetActive(false);
+        ParticleSettingPage.SetActive(true);
     }
 
     public void MakeLineRenderer()
@@ -223,6 +259,132 @@ public class DrawFunction : MonoBehaviour
             lineRenderer.positionCount = lineRenderer.positionCount + 1;
             lineRenderer.SetPosition(lineRenderer.positionCount - 1, anchor);
             lastAnchor = anchor; // 更新上一個錨點
+        }
+    }
+
+    void MakeParticleSystem()
+    {
+        if (particlePrefab == null)
+        {
+            Debug.LogError("Particle Prefab is not assigned!");
+            return;
+        }
+
+        GameObject tempParticle = Instantiate(particlePrefab);
+        tempParticle.transform.SetParent(linePool);
+        tempParticle.transform.position = anchor;
+        tempParticle.transform.localScale = Vector3.one;
+
+        currentParticleSystem = tempParticle.GetComponent<ParticleSystem>();
+
+        if (currentParticleSystem != null)
+        {
+            // 設定基本粒子參數
+            var main = currentParticleSystem.main;
+            main.startColor = LineMaterial.color; // 使用當前選擇的顏色
+
+            particleList.Add(currentParticleSystem);
+        }
+        else
+        {
+            Debug.LogError("Particle Prefab doesn't have ParticleSystem component!");
+        }
+    }
+
+    void HandleTwoPointDrawing()
+    {
+        if (!waitingForSecondPoint)
+        {
+            // 設置第一個點
+            anchorUpdate = true;
+            UpdateAnchor();
+            firstPoint = anchor;
+            waitingForSecondPoint = true;
+
+            // 創建暫時的線條來預覽
+            CreateTempLineRenderer();
+        }
+        else
+        {
+            // 設置第二個點並完成線條
+            anchorUpdate = true;
+            UpdateAnchor();
+            Vector3 secondPoint = anchor;
+
+            // 完成線條
+            CompleteTwoPointLine(firstPoint, secondPoint);
+
+            // 重置狀態
+            waitingForSecondPoint = false;
+            if (tempLineRenderer != null)
+            {
+                Destroy(tempLineRenderer.gameObject);
+                tempLineRenderer = null;
+            }
+        }
+    }
+
+    void CreateTempLineRenderer()
+    {
+        GameObject tempLine = Instantiate(linePrefab);
+        tempLine.transform.SetParent(linePool);
+        tempLine.transform.position = Vector3.zero;
+        tempLine.transform.localScale = new Vector3(1, 1, 1);
+
+        tempLineRenderer = tempLine.GetComponent<LineRenderer>();
+        tempLineRenderer.positionCount = 2;
+        tempLineRenderer.SetPosition(0, firstPoint);
+        tempLineRenderer.SetPosition(1, firstPoint); // 初始時兩點相同
+
+        // 設置材質和寬度
+        Material tempMaterial = new Material(LineMaterial);
+        tempMaterial.color = new Color(LineMaterial.color.r, LineMaterial.color.g, LineMaterial.color.b, 0.5f); // 半透明預覽
+        tempLineRenderer.material = tempMaterial;
+        tempLineRenderer.startWidth = lineWidth;
+        tempLineRenderer.endWidth = lineWidth;
+    }
+
+    void CompleteTwoPointLine(Vector3 point1, Vector3 point2)
+    {
+        GameObject finalLine = Instantiate(linePrefab);
+        finalLine.transform.SetParent(linePool);
+        finalLine.transform.position = Vector3.zero;
+        finalLine.transform.localScale = new Vector3(1, 1, 1);
+
+        LineRenderer finalLineRenderer = finalLine.GetComponent<LineRenderer>();
+        finalLineRenderer.positionCount = 2;
+        finalLineRenderer.SetPosition(0, point1);
+        finalLineRenderer.SetPosition(1, point2);
+
+        // 設置材質和寬度
+        Material lineMaterialInstance = new Material(LineMaterial);
+        finalLineRenderer.material = lineMaterialInstance;
+        finalLineRenderer.startWidth = lineWidth;
+        finalLineRenderer.endWidth = lineWidth;
+
+        // 添加到線條列表
+        lineList.Add(finalLineRenderer);
+    }
+
+    public void ToggleTwoPointAction()
+    {
+        if (!in3DDraw) return;
+
+        StraightLine = !StraightLine;
+
+        if (!StraightLine)
+        {
+            TwoPointActionButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
+            waitingForSecondPoint = false;
+            if (tempLineRenderer != null)
+            {
+                Destroy(tempLineRenderer.gameObject);
+                tempLineRenderer = null;
+            }
+        }
+        else
+        {
+            TwoPointActionButton.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
         }
     }
 
@@ -348,12 +510,22 @@ public class DrawFunction : MonoBehaviour
     {
         if (LineBrush)
         {
-            use = true;
-
-            if (!startLine)
+            if (in3DDraw && StraightLine)
             {
-                MakeLineRenderer();
+                HandleTwoPointDrawing();
             }
+            else
+            {
+                use = true;
+                if (!startLine)
+                {
+                    MakeLineRenderer();
+                }
+            }
+        }
+        else if (ParticleBrush)
+        {
+            StartDrawParticle();
         }
     }
 
@@ -385,13 +557,50 @@ public class DrawFunction : MonoBehaviour
             lineRenderer = null;
             anchorUpdate = false;
         }
+        else if (ParticleBrush)
+        {
+            StopDrawParticle();
+        }
+    }
+
+    public void StartDrawParticle()
+    {
+        if (!particleActive)
+        {
+            anchorUpdate = true;
+            UpdateAnchor();
+            MakeParticleSystem();
+            particleActive = true;
+        }
+    }
+
+    public void StopDrawParticle()
+    {
+        if (particleActive && currentParticleSystem != null)
+        {
+            // 停止粒子發射
+            var emission = currentParticleSystem.emission;
+            emission.enabled = false;
+
+            particleActive = false;
+            currentParticleSystem = null;
+            anchorUpdate = false;
+        }
     }
 
     //To Undo Last Drawn Line
     public void Undo()
     {
-        if (lineList.Count > 0)
+        if (ParticleBrush && particleList.Count > 0)
         {
+            // 撤銷最後一個粒子系統
+            ParticleSystem undoParticle = particleList[particleList.Count - 1];
+            Destroy(undoParticle.gameObject);
+            particleList.RemoveAt(particleList.Count - 1);
+        }
+        else if (LineBrush && lineList.Count > 0)
+        {
+            // 原有的線條撤銷邏輯
             LineRenderer undo = lineList[lineList.Count - 1];
             Destroy(undo.gameObject);
             lineList.RemoveAt(lineList.Count - 1);
@@ -406,6 +615,13 @@ public class DrawFunction : MonoBehaviour
             Destroy(item.gameObject);
         }
         lineList.Clear();
+
+        // 清除所有粒子
+        foreach (ParticleSystem particle in particleList)
+        {
+            Destroy(particle.gameObject);
+        }
+        particleList.Clear();
     }
 
     void OnResetButtonClicked()
@@ -433,6 +649,14 @@ public class DrawFunction : MonoBehaviour
 
         UpdateInputFields();
         ApplyWidthToCurrentLine();
+
+        StraightLine = false;
+        waitingForSecondPoint = false;
+        if (tempLineRenderer != null)
+        {
+            Destroy(tempLineRenderer.gameObject);
+            tempLineRenderer = null;
+        }
     }
 
     void OnFinishButtonClicked()
@@ -441,7 +665,7 @@ public class DrawFunction : MonoBehaviour
         uiManager.isInColorPage = false;
 
         in3DDraw = false;
-        in3DDraw_SL = false;
+        StraightLine = false;
         in2DDraw = false;
         LineBrush = false;
         ParticleBrush = false;
@@ -449,8 +673,16 @@ public class DrawFunction : MonoBehaviour
         DrawPanel.SetActive(false);
         uiManager.DrawPanel1?.SetActive(false);
         uiManager.DrawPanel2?.SetActive(false);
-        uiManager.LineRenenderPanel?.SetActive(false);
+        uiManager.BrushPanel?.SetActive(false);
         uiManager.UIHome?.SetActive(true);
         uiManager.BackButton?.SetActive(false);
+
+        TwoPointActionButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
+        waitingForSecondPoint = false;
+        if (tempLineRenderer != null)
+        {
+            Destroy(tempLineRenderer.gameObject);
+            tempLineRenderer = null;
+        }
     }
 }

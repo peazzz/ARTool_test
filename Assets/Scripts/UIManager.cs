@@ -18,7 +18,7 @@ public class UIManager : MonoBehaviour
 
     public GameObject DrawPanel1;
     public GameObject DrawPanel2;
-    public GameObject LineRenenderPanel;
+    public GameObject BrushPanel;
 
     [Header("SculptPanel2Content")]
     public GameObject ScalePage;
@@ -33,7 +33,7 @@ public class UIManager : MonoBehaviour
     public GameObject GroundCheck;
     public GameObject AE, SP, RP, OP;
 
-    [Header("LineRenenderPanel")]
+    [Header("BrushPanel")]
     public GameObject BasicEditPage;
     public GameObject ColorPage2;
     public GameObject ColorPageButtonForDraw;
@@ -259,16 +259,9 @@ public class UIManager : MonoBehaviour
             if (DrawPanel1.activeSelf)
             {
                 SwitchToPanel(UIHome);
+                SetPanelActive(BackButton, false);
             }
-            else if (DrawPanel2.activeSelf)
-            {
-                SwitchToPanel(DrawPanel1);
-                drawFunction.in3DDraw = false;
-                drawFunction.in3DDraw_SL = false;
-                drawFunction.in2DDraw = false;
-                drawFunction.DrawPanel.SetActive(false);
-            }
-            else if (LineRenenderPanel.activeSelf)
+            else if (BrushPanel.activeSelf)
             {
                 if (isInColorPage)
                 {
@@ -278,9 +271,17 @@ public class UIManager : MonoBehaviour
                 }
                 else
                 {
-                    SwitchToPanel(DrawPanel2);
+                    SwitchToPanel(DrawPanel1);
                     drawFunction.LineBrush = false;
                     drawFunction.ParticleBrush = false;
+
+                    drawFunction.TwoPointActionButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
+                    drawFunction.waitingForSecondPoint = false;
+                    if (drawFunction.tempLineRenderer != null)
+                    {
+                        Destroy(drawFunction.tempLineRenderer.gameObject);
+                        drawFunction.tempLineRenderer = null;
+                    }
                 }
             }
         }
@@ -316,7 +317,7 @@ public class UIManager : MonoBehaviour
         SetPanelActive(SculptPanel2, targetPanel == SculptPanel2);
         SetPanelActive(DrawPanel1, targetPanel == DrawPanel1);
         SetPanelActive(DrawPanel2, targetPanel == DrawPanel2);
-        SetPanelActive(LineRenenderPanel, targetPanel == LineRenenderPanel);
+        SetPanelActive(BrushPanel, targetPanel == BrushPanel);
     }
 
     private void SetPanelActive(GameObject panel, bool active)

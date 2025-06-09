@@ -15,8 +15,6 @@ public class ModelStat : MonoBehaviour
     [SerializeField] private Color materialColor; // 新增顏色欄位
     [SerializeField] private string timestamp;
 
-    [SerializeField] private bool showDebugInfo = false;
-
     public ModelData ModelData
     {
         get { return modelData; }
