@@ -20,11 +20,10 @@ public class SculptFunction : MonoBehaviour
 
     [Header("SculptTool")]
     public GameObject CuttingTool;
-    public GameObject CuttingToolButton;
 
-    public GameObject BTHandle;
-    public Slider BT_S;
-    public GameObject BT_B;
+    public GameObject CutButton;
+    public Slider CuttingTool_A;
+    public GameObject Aim;
 
     [Header("ShapeButton")]
     public Button ShapeButton_Cube, ShapeButton_Sphere, ShapeButton_Capsule, ShapeButton_Cylinder;
@@ -55,6 +54,17 @@ public class SculptFunction : MonoBehaviour
 
     [Header("Debug")]
     [SerializeField] private float raycastCacheTime = 0.15f;
+
+    [Header("CuttingTool Control")]
+    [SerializeField] private float cutMoveSpeed = 0.4f; // 每秒移動速度
+    [SerializeField] private float cutReturnSpeed = 1f; // 回復速度
+    [SerializeField] private float maxCutDistance = 4f; // 最大移動距離
+    [SerializeField] private float minCutDistance = 0f; // 最小移動距離
+
+    private bool isCutButtonPressed = false;
+    private float currentCutDistance = 0f;
+    private Vector3 cuttingToolOriginalPosition;
+    private bool cuttingToolInitialized = false;
 
     private VoxelShape selectedShape;
     private GameObject previewModel, finalModel;
@@ -95,6 +105,12 @@ public class SculptFunction : MonoBehaviour
             fcp.onColorChange.AddListener(OnChangeColor);
         }
 
+        if (CuttingTool != null)
+        {
+            cuttingToolOriginalPosition = CuttingTool.transform.localPosition;
+            cuttingToolInitialized = true;
+        }
+
         ClearButton.SetActive(false);
     }
 
@@ -119,6 +135,34 @@ public class SculptFunction : MonoBehaviour
         {
             HandleRotationInput();
         }
+
+        HandleCuttingToolMovement();
+    }
+
+    private void HandleCuttingToolMovement()
+    {
+        if (!cuttingToolInitialized || CuttingTool == null)
+            return;
+
+        if (isCutButtonPressed)
+        {
+            // 按住按鈕時，Z軸逐漸增加
+            currentCutDistance += cutMoveSpeed * Time.deltaTime;
+            currentCutDistance = Mathf.Clamp(currentCutDistance, minCutDistance, maxCutDistance);
+            Aim.SetActive(true);
+        }
+        else
+        {
+            // 放開按鈕時，Z軸逐漸減少
+            currentCutDistance -= cutReturnSpeed * Time.deltaTime;
+            currentCutDistance = Mathf.Clamp(currentCutDistance, minCutDistance, maxCutDistance);
+            Aim.SetActive(false);
+        }
+
+        // 更新 CuttingTool 位置
+        Vector3 newPosition = cuttingToolOriginalPosition;
+        newPosition.z += currentCutDistance;
+        CuttingTool.transform.localPosition = newPosition;
     }
 
     #region Select&Edit
@@ -311,11 +355,34 @@ public class SculptFunction : MonoBehaviour
         GenerateButton?.onClick.AddListener(OnGenerateButtonClicked);
         ResetButton?.onClick.AddListener(OnResetButtonClicked);
         PositionLockButton.GetComponent<Button>().onClick.AddListener(TogglePositionLock);
-        CuttingToolButton.GetComponent<Button>().onClick.AddListener(ToggleSculptTool);
-        BT_S?.onValueChanged.AddListener((value) => {
-            BT_B.GetComponent<Image>().color = new Color(1, 1, 1, value > 0 ? 1 : 0);
-            UpdateCuttingToolPosition(value);
-        });
+
+        if (CutButton != null)
+        {
+            // 使用 EventTrigger 來處理按下和放開事件
+            UnityEngine.EventSystems.EventTrigger trigger = CutButton.GetComponent<UnityEngine.EventSystems.EventTrigger>();
+            if (trigger == null)
+            {
+                trigger = CutButton.AddComponent<UnityEngine.EventSystems.EventTrigger>();
+            }
+
+            // 按下事件
+            UnityEngine.EventSystems.EventTrigger.Entry pointerDownEntry = new UnityEngine.EventSystems.EventTrigger.Entry();
+            pointerDownEntry.eventID = UnityEngine.EventSystems.EventTriggerType.PointerDown;
+            pointerDownEntry.callback.AddListener((data) => { OnCutButtonPressed(); });
+            trigger.triggers.Add(pointerDownEntry);
+
+            // 放開事件
+            UnityEngine.EventSystems.EventTrigger.Entry pointerUpEntry = new UnityEngine.EventSystems.EventTrigger.Entry();
+            pointerUpEntry.eventID = UnityEngine.EventSystems.EventTriggerType.PointerUp;
+            pointerUpEntry.callback.AddListener((data) => { OnCutButtonReleased(); });
+            trigger.triggers.Add(pointerUpEntry);
+
+            // 離開事件（防止滑出按鈕後仍然按住的情況）
+            UnityEngine.EventSystems.EventTrigger.Entry pointerExitEntry = new UnityEngine.EventSystems.EventTrigger.Entry();
+            pointerExitEntry.eventID = UnityEngine.EventSystems.EventTriggerType.PointerExit;
+            pointerExitEntry.callback.AddListener((data) => { OnCutButtonReleased(); });
+            trigger.triggers.Add(pointerExitEntry);
+        }
     }
 
     void SetupSliderAndInputEvents()
@@ -331,6 +398,14 @@ public class SculptFunction : MonoBehaviour
         SetupSlider(RotationYSlider, 0f, 360f, 0f, OnRotationYSliderChanged);
         SetupSlider(RotationZSlider, 0f, 360f, 0f, OnRotationZSliderChanged);
 
+        if (CuttingTool_A != null)
+        {
+            CuttingTool_A.minValue = 0f;
+            CuttingTool_A.maxValue = 1f;
+            CuttingTool_A.value = 1f;
+            CuttingTool_A.onValueChanged.AddListener(OnCuttingToolAlphaChanged);
+        }
+
         SetupInputField(ScaleXInputField, "1.00", OnScaleXInputChanged);
         SetupInputField(ScaleYInputField, "1.00", OnScaleYInputChanged);
         SetupInputField(ScaleZInputField, "1.00", OnScaleZInputChanged);
@@ -340,6 +415,30 @@ public class SculptFunction : MonoBehaviour
         SetupInputField(RotationZInputField, "0", OnRotationZInputChanged);
 
         SetupInputField(GridInputField, "10", OnGridInputChanged);
+    }
+
+    private void OnCuttingToolAlphaChanged(float alphaValue)
+    {
+        if (CuttingTool == null) return;
+
+        MeshRenderer renderer = CuttingTool.GetComponent<MeshRenderer>();
+        if (renderer != null && renderer.material != null)
+        {
+            Color currentColor = renderer.material.color;
+            currentColor.a = alphaValue;
+            renderer.material.color = currentColor;
+        }
+    }
+
+    private void OnCutButtonPressed()
+    {
+        isCutButtonPressed = true;
+    }
+
+    // 新增方法：放開 CutButton
+    private void OnCutButtonReleased()
+    {
+        isCutButtonPressed = false;
     }
 
     private void OnChangeColor(Color co)
@@ -641,23 +740,6 @@ public class SculptFunction : MonoBehaviour
         if (layerName == "SculptObject")
         {
             obj.tag = "SculptObject";
-        }
-    }
-
-    private void ToggleSculptTool()
-    {
-        useTool = !useTool;
-        if (useTool)
-        {
-            CuttingToolButton.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
-            BTHandle.SetActive(true);
-            CuttingTool.SetActive(true);
-        }
-        else
-        {
-            CuttingToolButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
-            BTHandle.SetActive(false);
-            CuttingTool.SetActive(false);
         }
     }
 
