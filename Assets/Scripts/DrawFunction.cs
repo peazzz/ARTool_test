@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
 public class DrawFunction : MonoBehaviour
 {
@@ -14,7 +15,6 @@ public class DrawFunction : MonoBehaviour
     [Header("Mode Selection")]
     public Button _3DDraw;
     public Button _2DDraw;
-
     public GameObject SpaceModeButton;
     public GameObject TextureModeButton;
 
@@ -23,6 +23,9 @@ public class DrawFunction : MonoBehaviour
     public GameObject PBrush;
     public GameObject LineSettingPage;
     public GameObject ParticleSettingPage;
+
+    [Header("2D Canvas System")]
+    public Canvas2DManager canvas2DManager;
 
     [Header("3D Object Painting")]
     private bool isPaintingOn3D = false;
@@ -102,13 +105,18 @@ public class DrawFunction : MonoBehaviour
     private bool textureClickEnabled = false;
     private bool hasProcessedClick = false;
 
+    [Header("Input Optimization")]
+    private bool isMouseDown = false;
+    private bool isTouchActive = false;
+    private Vector2 lastInputPosition;
+    private float inputSensitivity = 2f;
+
     void Start()
     {
         SetupAllButtonEvents();
         InitializeUI();
         SetupUIListeners();
         LineBrushSelection();
-
         SpaceModeSelection();
 
         if (fcp != null && LineMaterial != null)
@@ -138,7 +146,14 @@ public class DrawFunction : MonoBehaviour
             ParticleBrush = false;
             in2DDraw = true;
             in3DDraw = false;
-            //DrawPanel.SetActive(true);
+
+            if (canvas2DManager != null)
+            {
+                canvas2DManager.Show2DCanvas();
+                canvas2DManager.SetBrushColor(LineMaterial.color);
+                canvas2DManager.SetBrushSize(lineWidth * 1000f);
+            }
+
             uiManager.SwitchToPanel(uiManager.BrushPanel);
         });
 
@@ -246,7 +261,11 @@ public class DrawFunction : MonoBehaviour
             }
         }
 
-        // 預覽線條更新 - 只在Space模式或Texture模式等待第二個點時更新
+        if (in2DDraw && canvas2DManager != null)
+        {
+            Handle2DCanvasDrawing();
+        }
+
         if (StraightLine && waitingForSecondPoint && tempLineRenderer != null)
         {
             if (SpaceMode)
@@ -256,7 +275,7 @@ public class DrawFunction : MonoBehaviour
             }
             else if (TextureMode)
             {
-                Ray ray = arCamera.ScreenPointToRay(Input.mousePosition);
+                Ray ray = arCamera.ScreenPointToRay(GetInputPosition());
                 RaycastHit hit;
 
                 if (Physics.Raycast(ray, out hit, 100f))
@@ -267,14 +286,202 @@ public class DrawFunction : MonoBehaviour
         }
     }
 
+    Vector2 GetInputPosition()
+    {
+        if (Input.touchCount > 0)
+        {
+            return Input.GetTouch(0).position;
+        }
+        return Input.mousePosition;
+    }
+
+    bool GetInputDown()
+    {
+        return Input.GetMouseButtonDown(0) || (Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Began);
+    }
+
+    bool GetInput()
+    {
+        return Input.GetMouseButton(0) || (Input.touchCount > 0 && (Input.GetTouch(0).phase == TouchPhase.Moved || Input.GetTouch(0).phase == TouchPhase.Stationary));
+    }
+
+    bool GetInputUp()
+    {
+        return Input.GetMouseButtonUp(0) || (Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Ended);
+    }
+
+    void Handle2DCanvasDrawing()
+    {
+        Vector2 currentPosition = GetInputPosition();
+
+        if (GetInputDown())
+        {
+            // 先檢查是否點擊到其他UI元素
+            if (IsClickingOtherUI(currentPosition))
+            {
+                return; // 點擊到其他UI，不進行繪圖
+            }
+
+            // 再檢查是否在畫布範圍內
+            if (IsPointerOnCanvas(currentPosition))
+            {
+                isMouseDown = true;
+                lastInputPosition = currentPosition;
+                canvas2DManager.StartDrawing(currentPosition);
+            }
+        }
+        else if (GetInput() && isMouseDown)
+        {
+            if (IsPointerOnCanvas(currentPosition))
+            {
+                if (Vector2.Distance(currentPosition, lastInputPosition) > inputSensitivity)
+                {
+                    canvas2DManager.UpdateDrawing(currentPosition);
+                    lastInputPosition = currentPosition;
+                }
+            }
+            else
+            {
+                // 離開畫布範圍，停止繪圖
+                isMouseDown = false;
+                canvas2DManager.StopDrawing();
+            }
+        }
+        else if (GetInputUp() || (!GetInput() && isMouseDown))
+        {
+            isMouseDown = false;
+            canvas2DManager.StopDrawing();
+        }
+    }
+
+    // 檢查是否點擊到其他UI元素（非畫布）
+    private bool IsClickingOtherUI(Vector2 inputPosition)
+    {
+        if (canvas2DManager == null || canvas2DManager.canvasImage == null)
+            return false;
+
+        PointerEventData pointerData = new PointerEventData(EventSystem.current);
+        pointerData.position = inputPosition;
+
+        List<RaycastResult> raycastResults = new List<RaycastResult>();
+        EventSystem.current.RaycastAll(pointerData, raycastResults);
+
+        // 檢查所有UI元素
+        foreach (RaycastResult result in raycastResults)
+        {
+            // 如果是畫布，跳過檢查
+            if (result.gameObject == canvas2DManager.canvasImage.gameObject)
+            {
+                continue;
+            }
+
+            // 如果是其他UI元素（Button, Panel, Image等）
+            if (result.gameObject.GetComponent<Selectable>() != null ||
+                result.gameObject.GetComponent<Button>() != null ||
+                (result.gameObject.GetComponent<Graphic>() != null &&
+                 result.gameObject.GetComponent<Graphic>().raycastTarget))
+            {
+                return true; // 點擊到其他UI元素
+            }
+        }
+
+        return false;
+    }
+
+    private bool IsPointerOnCanvas(Vector2 inputPosition)
+    {
+        if (canvas2DManager == null || canvas2DManager.canvasImage == null)
+            return false;
+
+        RectTransform canvasRect = canvas2DManager.canvasImage.rectTransform;
+        Canvas canvas = canvas2DManager.canvasImage.GetComponentInParent<Canvas>();
+        Camera uiCamera = canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
+
+        Vector2 localPoint;
+        bool isInside = RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            canvasRect, inputPosition, uiCamera, out localPoint);
+
+        return isInside;
+    }
+
+    // 備用方法：如果上面的方法有問題，可以使用這個更嚴格的檢測
+    private bool IsPointerOnCanvasStrict(Vector2 inputPosition)
+    {
+        if (canvas2DManager == null || canvas2DManager.canvasImage == null)
+            return false;
+
+        PointerEventData pointerData = new PointerEventData(EventSystem.current);
+        pointerData.position = inputPosition;
+
+        List<RaycastResult> raycastResults = new List<RaycastResult>();
+        EventSystem.current.RaycastAll(pointerData, raycastResults);
+
+        // 檢查所有射線檢測結果
+        foreach (RaycastResult result in raycastResults)
+        {
+            // 如果第一個檢測到的UI元素就是畫布，才允許繪圖
+            if (result.gameObject == canvas2DManager.canvasImage.gameObject)
+            {
+                return true;
+            }
+            // 如果第一個檢測到的是其他UI元素，就不允許繪圖
+            else if (result.gameObject.GetComponent<Graphic>() != null)
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    // 最嚴格的方法：檢查是否點擊到畫布且沒有其他UI阻擋
+    private bool IsPointerOnCanvasOnly(Vector2 inputPosition)
+    {
+        if (canvas2DManager == null || canvas2DManager.canvasImage == null)
+            return false;
+
+        PointerEventData pointerData = new PointerEventData(EventSystem.current);
+        pointerData.position = inputPosition;
+
+        List<RaycastResult> raycastResults = new List<RaycastResult>();
+        EventSystem.current.RaycastAll(pointerData, raycastResults);
+
+        bool foundCanvas = false;
+
+        foreach (RaycastResult result in raycastResults)
+        {
+            // 如果是畫布
+            if (result.gameObject == canvas2DManager.canvasImage.gameObject)
+            {
+                foundCanvas = true;
+            }
+            // 如果是其他有Graphic組件的UI元素（且不是畫布）
+            else if (result.gameObject.GetComponent<Graphic>() != null)
+            {
+                // 檢查這個UI元素是否在畫布前面（sortingOrder更高）
+                Canvas otherCanvas = result.gameObject.GetComponentInParent<Canvas>();
+                Canvas canvasCanvas = canvas2DManager.canvasImage.GetComponentInParent<Canvas>();
+
+                if (otherCanvas != null && canvasCanvas != null)
+                {
+                    if (otherCanvas.sortingOrder > canvasCanvas.sortingOrder)
+                    {
+                        return false; // 有其他UI在畫布前面
+                    }
+                }
+            }
+        }
+
+        return foundCanvas;
+    }
+
     void Handle3DPainting()
     {
-        Ray ray = arCamera.ScreenPointToRay(Input.mousePosition);
+        Ray ray = arCamera.ScreenPointToRay(GetInputPosition());
         RaycastHit hit;
 
         if (Physics.Raycast(ray, out hit, 100f))
         {
-            // 如果啟用直線模式，只在點擊時處理
             if (StraightLine)
             {
                 if (textureClickEnabled && !hasProcessedClick)
@@ -285,7 +492,6 @@ public class DrawFunction : MonoBehaviour
                 return;
             }
 
-            // 連續繪製模式的原有邏輯
             if (hit.collider.gameObject.layer == LayerMask.NameToLayer("SculptObject"))
             {
                 CubeCarvingSystem carvingSystem = hit.collider.GetComponent<CubeCarvingSystem>();
@@ -357,7 +563,6 @@ public class DrawFunction : MonoBehaviour
         lineList.Add(lineRenderer);
     }
 
-    // 新增方法：向表面線條添加點
     void AddPointToSurfaceLine(Vector3 newPoint)
     {
         if (lineRenderer != null)
@@ -369,12 +574,11 @@ public class DrawFunction : MonoBehaviour
 
     void Handle3DParticlePainting()
     {
-        Ray ray = arCamera.ScreenPointToRay(Input.mousePosition);
+        Ray ray = arCamera.ScreenPointToRay(GetInputPosition());
         RaycastHit hit;
 
         if (Physics.Raycast(ray, out hit, 100f))
         {
-            // 如果啟用直線模式，只在點擊時處理
             if (StraightLine)
             {
                 if (textureClickEnabled && !hasProcessedClick)
@@ -385,7 +589,6 @@ public class DrawFunction : MonoBehaviour
                 return;
             }
 
-            // 連續繪製模式的原有邏輯
             float distance = Vector3.Distance(hit.point, lastParticlePosition);
             if (distance >= gapThreshold)
             {
@@ -399,23 +602,14 @@ public class DrawFunction : MonoBehaviour
     {
         if (!waitingForSecondPoint)
         {
-            // 第一個點
             firstPoint = hit.point;
             waitingForSecondPoint = true;
-
-            // 創建預覽線條
             CreateTempTextureLineRenderer(hit.point);
-
-            Debug.Log("設置第一個點: " + firstPoint);
         }
         else
         {
-            // 第二個點 - 完成繪製
             Vector3 secondPoint = hit.point;
 
-            Debug.Log("設置第二個點: " + secondPoint + "，完成直線繪製");
-
-            // 判斷是否為SculptObject來決定繪製方式
             if (hit.collider.gameObject.layer == LayerMask.NameToLayer("SculptObject"))
             {
                 DrawStraightLineOnSculptObject(firstPoint, secondPoint, hit.collider.gameObject);
@@ -425,35 +619,22 @@ public class DrawFunction : MonoBehaviour
                 CompleteTextureSurfaceLine(firstPoint, secondPoint);
             }
 
-            // 重置狀態，準備下一條直線
             ResetTwoPointState();
         }
     }
 
-    // 新增：處理Texture模式下的兩點粒子繪製
     void HandleTexture3DTwoPointParticle(RaycastHit hit)
     {
         if (!waitingForSecondPoint)
         {
-            // 第一個點
             firstPoint = hit.point;
             waitingForSecondPoint = true;
-
-            // 創建第一個粒子作為起點標記
             CreateParticleAtPosition(hit.point);
-
-            Debug.Log("設置第一個粒子點: " + firstPoint);
         }
         else
         {
-            // 第二個點 - 繪製直線粒子
             Vector3 secondPoint = hit.point;
-
-            Debug.Log("設置第二個粒子點: " + secondPoint + "，完成直線粒子繪製");
-
             DrawStraightParticleLine(firstPoint, secondPoint);
-
-            // 重置狀態，準備下一條直線
             ResetTwoPointState();
         }
     }
@@ -466,12 +647,8 @@ public class DrawFunction : MonoBehaviour
             Destroy(tempLineRenderer.gameObject);
             tempLineRenderer = null;
         }
-
-        Debug.Log("重置兩點狀態，準備下一條直線");
     }
 
-
-    // 新增：創建Texture模式的預覽線條
     void CreateTempTextureLineRenderer(Vector3 startPoint)
     {
         GameObject tempLine = Instantiate(linePrefab);
@@ -491,7 +668,6 @@ public class DrawFunction : MonoBehaviour
         tempLineRenderer.endWidth = lineWidth;
     }
 
-    // 新增：在SculptObject上繪製直線
     void DrawStraightLineOnSculptObject(Vector3 startPoint, Vector3 endPoint, GameObject sculptObject)
     {
         PaintManager paintManager = sculptObject.GetComponent<PaintManager>();
@@ -503,10 +679,9 @@ public class DrawFunction : MonoBehaviour
         paintManager.paintColor = LineMaterial.color;
         paintManager.brushSize = lineWidth;
 
-        // 在起點和終點之間插值繪製
         float distance = Vector3.Distance(startPoint, endPoint);
         int steps = Mathf.RoundToInt(distance / (gapThreshold * 0.5f));
-        steps = Mathf.Max(steps, 10); // 增加最小步數確保連續性
+        steps = Mathf.Max(steps, 10);
 
         for (int i = 0; i <= steps; i++)
         {
@@ -516,7 +691,6 @@ public class DrawFunction : MonoBehaviour
             Vector3 hitPoint;
             Vector3 hitNormal;
 
-            // 嘗試找到表面點
             if (FindSurfacePointForSculpt(interpolatedPoint, sculptObject, out hitPoint, out hitNormal))
             {
                 paintManager.PaintAt(hitPoint, hitNormal);
@@ -529,22 +703,16 @@ public class DrawFunction : MonoBehaviour
         hitPoint = Vector3.zero;
         hitNormal = Vector3.zero;
 
-        // 獲取物件的碰撞器
         Collider objectCollider = sculptObject.GetComponent<Collider>();
         if (objectCollider == null)
         {
-            Debug.LogWarning("SculptObject沒有碰撞器！");
             return false;
         }
 
-        // 使用ClosestPoint來找到最近的表面點
         Vector3 closestPoint = objectCollider.ClosestPoint(targetPoint);
-
-        // 計算法線（從物件中心指向表面點）
         Vector3 center = objectCollider.bounds.center;
         Vector3 normal = (closestPoint - center).normalized;
 
-        // 進行微調射線檢測來獲得更精確的法線
         Ray ray = new Ray(closestPoint + normal * 0.01f, -normal);
         RaycastHit hit;
 
@@ -558,14 +726,11 @@ public class DrawFunction : MonoBehaviour
             }
         }
 
-        // 如果射線檢測失敗，使用ClosestPoint的結果
         hitPoint = closestPoint;
         hitNormal = normal;
         return true;
     }
 
-
-    // 新增：完成表面線條繪製
     void CompleteTextureSurfaceLine(Vector3 startPoint, Vector3 endPoint)
     {
         GameObject finalLine = Instantiate(linePrefab);
@@ -586,7 +751,6 @@ public class DrawFunction : MonoBehaviour
         lineList.Add(finalLineRenderer);
     }
 
-    // 新增：繪製直線粒子
     void DrawStraightParticleLine(Vector3 startPoint, Vector3 endPoint)
     {
         float distance = Vector3.Distance(startPoint, endPoint);
@@ -605,7 +769,7 @@ public class DrawFunction : MonoBehaviour
     {
         if (anchorUpdate)
         {
-            Vector3 temp = Input.mousePosition;
+            Vector3 temp = GetInputPosition();
             temp.z = cameraDistance;
             anchor = arCamera.ScreenToWorldPoint(temp);
         }
@@ -714,7 +878,6 @@ public class DrawFunction : MonoBehaviour
     {
         if (particlePrefab == null)
         {
-            Debug.LogError("Particle Prefab is not assigned!");
             return;
         }
 
@@ -738,7 +901,6 @@ public class DrawFunction : MonoBehaviour
         }
         else
         {
-            Debug.LogError("Particle Prefab doesn't have ParticleSystem component!");
             Destroy(tempParticle);
         }
     }
@@ -822,8 +984,6 @@ public class DrawFunction : MonoBehaviour
         if (!StraightLine)
         {
             TwoPointActionButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
-
-            // 重置所有兩點繪製相關狀態
             ResetTwoPointState();
             textureClickEnabled = false;
             hasProcessedClick = false;
@@ -842,8 +1002,6 @@ public class DrawFunction : MonoBehaviour
             UpdateAnchor();
             firstPoint = anchor;
             waitingForSecondPoint = true;
-
-            // 創建第一個粒子
             CreateParticleAtPosition(anchor);
         }
         else
@@ -851,10 +1009,7 @@ public class DrawFunction : MonoBehaviour
             anchorUpdate = true;
             UpdateAnchor();
             Vector3 secondPoint = anchor;
-
-            // 繪製直線粒子
             DrawStraightParticleLine(firstPoint, secondPoint);
-
             waitingForSecondPoint = false;
         }
     }
@@ -864,6 +1019,11 @@ public class DrawFunction : MonoBehaviour
         lineWidth = value;
         UpdateInputFields();
         ApplyWidthToCurrentLine();
+
+        if (canvas2DManager != null && in2DDraw)
+        {
+            canvas2DManager.SetBrushSize(value * 1000f);
+        }
     }
 
     public void OnScaleSliderChanged(float value)
@@ -896,6 +1056,11 @@ public class DrawFunction : MonoBehaviour
             if (WidthSlider != null)
                 WidthSlider.value = lineWidth;
             ApplyWidthToCurrentLine();
+
+            if (canvas2DManager != null && in2DDraw)
+            {
+                canvas2DManager.SetBrushSize(lineWidth * 1000f);
+            }
         }
         UpdateInputFields();
     }
@@ -974,6 +1139,11 @@ public class DrawFunction : MonoBehaviour
     private void OnChangeColor(Color co)
     {
         LineMaterial.color = co;
+
+        if (canvas2DManager != null && in2DDraw)
+        {
+            canvas2DManager.SetBrushColor(co);
+        }
     }
 
     public void StartDrawLine()
@@ -986,20 +1156,17 @@ public class DrawFunction : MonoBehaviour
                 {
                     if (StraightLine)
                     {
-                        // Texture模式直線：啟用點擊觸發
                         textureClickEnabled = true;
                         hasProcessedClick = false;
                         use = true;
                     }
                     else
                     {
-                        // Texture模式連續繪製
                         use = true;
                     }
                     return;
                 }
 
-                // Space模式邏輯保持不變
                 if (StraightLine)
                 {
                     HandleTwoPointDrawing();
@@ -1033,17 +1200,12 @@ public class DrawFunction : MonoBehaviour
         if (TextureMode && LineBrush)
         {
             use = false;
-
-            // 重置點擊控制狀態
             textureClickEnabled = false;
             hasProcessedClick = false;
-
-            // 重置線條渲染器引用
             lineRenderer = null;
             return;
         }
 
-        // Space模式的原有邏輯保持不變
         if (LineBrush && lineRenderer != null)
         {
             if (lineRenderer.positionCount == 1)
@@ -1098,14 +1260,13 @@ public class DrawFunction : MonoBehaviour
             {
                 if (StraightLine)
                 {
-                    // Texture模式直線粒子：啟用點擊觸發
                     textureClickEnabled = true;
                     hasProcessedClick = false;
                     particleActive = true;
                 }
                 else
                 {
-                    Ray ray = arCamera.ScreenPointToRay(Input.mousePosition);
+                    Ray ray = arCamera.ScreenPointToRay(GetInputPosition());
                     RaycastHit hit;
 
                     if (Physics.Raycast(ray, out hit, 100f))
@@ -1130,7 +1291,6 @@ public class DrawFunction : MonoBehaviour
             particleActive = false;
             anchorUpdate = false;
 
-            // 如果是Texture模式，重置點擊控制狀態
             if (TextureMode)
             {
                 textureClickEnabled = false;
@@ -1178,6 +1338,11 @@ public class DrawFunction : MonoBehaviour
         foreach (PaintManager pm in allPaintManagers)
         {
             pm.ClearPaint();
+        }
+
+        if (canvas2DManager != null && in2DDraw)
+        {
+            canvas2DManager.ClearCanvas();
         }
     }
 
@@ -1258,6 +1423,11 @@ public class DrawFunction : MonoBehaviour
         lastHitObject = null;
 
         SpaceModeSelection();
+
+        if (canvas2DManager != null)
+        {
+            canvas2DManager.Hide2DCanvas();
+        }
     }
 
     void ResetAllDrawingStates()
@@ -1270,5 +1440,7 @@ public class DrawFunction : MonoBehaviour
         startLine = false;
         anchorUpdate = false;
         lineRenderer = null;
+        isMouseDown = false;
+        isTouchActive = false;
     }
 }

@@ -50,7 +50,7 @@ public class UIManager : MonoBehaviour
     [Header("Component")]
     public LightshipNavMeshRenderer lightshipNavMeshRenderer;
 
-    private bool UI_on = false;
+    public bool UI_on = false;
     public bool inSculpt;
     public bool inDraw;
     public bool isInColorPage = false;
