@@ -6,7 +6,7 @@ using UnityEngine.UI;
 public class SculptFunction : MonoBehaviour
 {
     [Header("BasicSetting")]
-    public GameObject ClearButton;
+    //public GameObject ClearButton;
     public GameObject cubeCarvingSystemPrefab;
     public Material previewMaterial, finalMaterial;
     public Transform parentObject;
@@ -111,7 +111,7 @@ public class SculptFunction : MonoBehaviour
             cuttingToolInitialized = true;
         }
 
-        ClearButton.SetActive(false);
+        //ClearButton.SetActive(false);
     }
 
     void Update()
@@ -232,7 +232,7 @@ public class SculptFunction : MonoBehaviour
         uiManager.SculptPanel2?.SetActive(true);
         uiManager.UIHome?.SetActive(false);
         uiManager.BackButton?.SetActive(true);
-        ClearButton.SetActive(true);
+        //ClearButton.SetActive(true);
         GridInputField.interactable = false;
 
         UpdateAllUIValues();
@@ -283,7 +283,7 @@ public class SculptFunction : MonoBehaviour
             currentSelectedObject = null;
         }
         isEditingExistingObject = false;
-        ClearButton.SetActive(false);
+        //ClearButton.SetActive(false);
         GridInputField.interactable = true;
     }
 
@@ -1416,6 +1416,7 @@ public class SculptFunction : MonoBehaviour
         isEditingExistingObject = false;
         uiManager.inSculpt = false;
         uiManager.lightshipNavMeshRenderer.enabled = false;
+        uiManager.ClearModeButton.SetActive(true);
     }
 
     void ResetAllParameters()
@@ -1495,7 +1496,7 @@ public class SculptFunction : MonoBehaviour
             Destroy(currentSelectedObject);
             currentSelectedObject = null;
             isEditingExistingObject = false;
-            ClearButton.SetActive(false);
+            //ClearButton.SetActive(false);
 
             SwitchToHome();
         }

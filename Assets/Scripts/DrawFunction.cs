@@ -128,6 +128,7 @@ public class DrawFunction : MonoBehaviour
             in2DDraw = false;
             DrawPanel.SetActive(true);
             uiManager.SwitchToPanel(uiManager.BrushPanel);
+            uiManager.SetUIVisibility(false);
             LineBrushSelection();
             SpaceModeSelection();
         });
@@ -1243,6 +1244,7 @@ public class DrawFunction : MonoBehaviour
         uiManager.BrushPanel?.SetActive(false);
         uiManager.UIHome?.SetActive(true);
         uiManager.BackButton?.SetActive(false);
+        uiManager.ClearModeButton.SetActive(true);
 
         TwoPointActionButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
         waitingForSecondPoint = false;

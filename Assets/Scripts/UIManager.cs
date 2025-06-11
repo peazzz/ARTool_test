@@ -10,6 +10,10 @@ public class UIManager : MonoBehaviour
     public RectTransform FounctionUI_RT;
     public RectTransform HandleArrow_RT;
     public GameObject BackButton;
+    public GameObject FounctionUI;
+    public GameObject ClearModeButton;
+    public GameObject ClearModeObject;
+    public GameObject ClearModeHint;
 
     [Header("MainPanel")]
     public GameObject UIHome;
@@ -19,6 +23,7 @@ public class UIManager : MonoBehaviour
     public GameObject DrawPanel1;
     public GameObject DrawPanel2;
     public GameObject BrushPanel;
+    
 
     [Header("SculptPanel2Content")]
     public GameObject ScalePage;
@@ -50,6 +55,7 @@ public class UIManager : MonoBehaviour
     public bool inDraw;
     public bool isInColorPage = false;
     public bool isGroundChecking = true;
+    private bool ClearMode;
 
     private readonly Vector3 UI_SHOW_POSITION = Vector3.zero;
     private readonly Vector3 UI_HIDE_POSITION = new Vector3(0, -400, 0);
@@ -86,6 +92,7 @@ public class UIManager : MonoBehaviour
         SetPanelActive(BackButton, false);
 
         sculptFunction?.UpdateAllUIValues();
+        ClearModeButton.SetActive(true);
     }
 
     void SetupAllButtonEvents()
@@ -96,6 +103,27 @@ public class UIManager : MonoBehaviour
         ColorPageButtonForSculpt.GetComponent<Button>().onClick.AddListener(() => ColorPageSelectForSculpt());
         ColorPageButtonForDraw.GetComponent<Button>().onClick.AddListener(() => ColorPageSelectForDraw());
         GroundCheck.GetComponent<Button>().onClick.AddListener(() => GroundCheckFunction());
+        ClearModeButton.GetComponent<Button>().onClick.AddListener(() => ClearModeSwitch());
+    }
+
+    public void ClearModeSwitch()
+    {
+        ClearMode = !ClearMode;
+
+        if (ClearMode)
+        {
+            FounctionUI.SetActive(false);
+            ClearModeButton.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
+            ClearModeObject.SetActive(true);
+            ClearModeHint.SetActive(true);
+        }
+        else
+        {
+            FounctionUI.SetActive(true);
+            ClearModeButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
+            ClearModeObject.SetActive(false);
+            ClearModeHint.SetActive(false);
+        }
     }
 
     public void SculptButton()
@@ -103,6 +131,7 @@ public class UIManager : MonoBehaviour
         inSculpt = true;
         SwitchToPanel(SculptPanel1);
         SetPanelActive(BackButton, true);
+        ClearModeButton.SetActive(false);
     }
 
     public void DrawButton()
@@ -110,6 +139,7 @@ public class UIManager : MonoBehaviour
         inDraw = true;
         SwitchToPanel(DrawPanel1);
         SetPanelActive(BackButton, true);
+        ClearModeButton.SetActive(false);
     }
 
     public void FunctionUISwitch()
@@ -235,6 +265,7 @@ public class UIManager : MonoBehaviour
                     sculptFunction.OnBackButtonClicked();
                     inSculpt = false;
                     lightshipNavMeshRenderer.enabled = false;
+                    ClearModeButton.SetActive(true);
                 }
             }
             else
@@ -251,6 +282,7 @@ public class UIManager : MonoBehaviour
                     SetPanelActive(BackButton, false);
                     inSculpt = false;
                     lightshipNavMeshRenderer.enabled = false;
+                    ClearModeButton.SetActive(true);
                 }
             }
         }
@@ -260,6 +292,7 @@ public class UIManager : MonoBehaviour
             {
                 SwitchToPanel(UIHome);
                 SetPanelActive(BackButton, false);
+                ClearModeButton.SetActive(true);
             }
             else if (BrushPanel.activeSelf)
             {
@@ -296,7 +329,7 @@ public class UIManager : MonoBehaviour
 
     #region AuxiliaryFunction
 
-    private void SetUIVisibility(bool show)
+    public void SetUIVisibility(bool show)
     {
         if (FounctionUI_RT != null)
         {
