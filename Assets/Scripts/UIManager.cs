@@ -272,8 +272,7 @@ public class UIManager : MonoBehaviour
                 else
                 {
                     SwitchToPanel(DrawPanel1);
-                    drawFunction.LineBrush = false;
-                    drawFunction.ParticleBrush = false;
+                    drawFunction.DrawPanel.SetActive(false);
 
                     drawFunction.TwoPointActionButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
                     drawFunction.waitingForSecondPoint = false;

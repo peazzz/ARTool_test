@@ -199,8 +199,14 @@ public class SculptFunction : MonoBehaviour
 
     private void LoadColorFromObject(GameObject obj)
     {
+        PaintManager paintManager = obj.GetComponent<PaintManager>();
         ModelStat modelStat = obj.GetComponent<ModelStat>();
         Color objectColor = Color.white;
+
+        if (paintManager != null)
+        {
+            return;
+        }
 
         if (modelStat != null && modelStat.IsModelDataValid())
         {
@@ -218,7 +224,10 @@ public class SculptFunction : MonoBehaviour
         fcp.onColorChange.AddListener(OnChangeColor);
         ModelMaterial.color = objectColor;
 
-        ApplyColorToModel(obj, objectColor);
+        if (paintManager == null)
+        {
+            ApplyColorToModel(obj, objectColor);
+        }
     }
 
     void DeselectCurrentObject()
@@ -336,6 +345,26 @@ public class SculptFunction : MonoBehaviour
     private void OnChangeColor(Color co)
     {
         ModelMaterial.color = co;
+
+        if (isEditingExistingObject && currentSelectedObject != null)
+        {
+            PaintManager paintManager = currentSelectedObject.GetComponent<PaintManager>();
+            if (paintManager != null)
+            {
+                paintManager.paintColor = co;
+                return;
+            }
+        }
+        else if (previewModel != null)
+        {
+            PaintManager paintManager = previewModel.GetComponent<PaintManager>();
+            if (paintManager != null)
+            {
+                paintManager.paintColor = co;
+                return;
+            }
+        }
+
         ApplyColorToCurrentModel(co);
     }
 
@@ -370,12 +399,22 @@ public class SculptFunction : MonoBehaviour
 
         if (targetModel != null)
         {
-            ApplyColorToModel(targetModel, color);
+            PaintManager paintManager = targetModel.GetComponent<PaintManager>();
+            if (paintManager == null)
+            {
+                ApplyColorToModel(targetModel, color);
+            }
         }
     }
 
     private void ApplyColorToModel(GameObject model, Color color)
     {
+        PaintManager paintManager = model.GetComponent<PaintManager>();
+        if (paintManager != null)
+        {
+            return;
+        }
+
         CubeCarvingSystem carvingSystem = model.GetComponent<CubeCarvingSystem>();
         if (carvingSystem != null)
         {
@@ -1153,7 +1192,11 @@ public class SculptFunction : MonoBehaviour
             finalModel.transform.rotation = lastPreviewRotation;
             SetMaterialAndLayer(finalModel, finalMaterial, "SculptObject");
 
-            StartCoroutine(ApplyColorAfterMeshGeneration(finalModel, fcp.color));
+            PaintManager paintManager = finalModel.GetComponent<PaintManager>();
+            if (paintManager == null)
+            {
+                StartCoroutine(ApplyColorAfterMeshGeneration(finalModel, fcp.color));
+            }
         }
     }
 
@@ -1170,11 +1213,22 @@ public class SculptFunction : MonoBehaviour
         currentSelectedObject.transform.localScale = finalScale;
         currentSelectedObject.transform.rotation = Quaternion.Euler(modelRotation);
         SetLayerRecursively(currentSelectedObject, LayerMask.NameToLayer("SculptObject"));
-        StartCoroutine(ApplyColorAfterMeshGeneration(currentSelectedObject, fcp.color));
+
+        PaintManager paintManager = currentSelectedObject.GetComponent<PaintManager>();
+        if (paintManager == null)
+        {
+            StartCoroutine(ApplyColorAfterMeshGeneration(currentSelectedObject, fcp.color));
+        }
 
         ModelStat modelStat = currentSelectedObject.GetComponent<ModelStat>();
         if (modelStat != null)
         {
+            Color colorToSave = fcp.color;
+            if (paintManager != null)
+            {
+                colorToSave = modelStat.ModelData.materialColor;
+            }
+
             ModelData updatedData = new ModelData
             {
                 filename = currentSelectedObject.name,
@@ -1182,7 +1236,7 @@ public class SculptFunction : MonoBehaviour
                 position = currentSelectedObject.transform.position,
                 rotation = modelRotation,
                 scale = currentSelectedObject.transform.localScale,
-                materialColor = fcp.color,
+                materialColor = colorToSave,
                 timestamp = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
             };
 
@@ -1424,12 +1478,17 @@ public class SculptFunction : MonoBehaviour
 
     private void RestoreObjectOriginalColor(GameObject obj)
     {
+        PaintManager paintManager = obj.GetComponent<PaintManager>();
+        if (paintManager != null)
+        {
+            return;
+        }
+
         ModelStat modelStat = obj.GetComponent<ModelStat>();
         if (modelStat != null && modelStat.IsModelDataValid())
         {
             Color savedColor = modelStat.ModelData.materialColor;
             ApplyColorToModel(obj, savedColor);
-            Debug.Log($"Restored original color: {savedColor}");
         }
     }
     #endregion

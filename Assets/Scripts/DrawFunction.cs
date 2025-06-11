@@ -5,21 +5,30 @@ using UnityEngine.UI;
 
 public class DrawFunction : MonoBehaviour
 {
+    [Header("References")]
     public Camera arCamera;
     public UIManager uiManager;
     public FlexibleColorPicker fcp;
     public GameObject DrawPanel;
 
-    [Header("ModeSelection")]
+    [Header("Mode Selection")]
     public Button _3DDraw;
     public Button _2DDraw;
 
-    [Header("BrushSelection")]
+    public GameObject SpaceModeButton;
+    public GameObject TextureModeButton;
+
+    [Header("Brush Selection")]
     public GameObject LBrush;
     public GameObject PBrush;
-
     public GameObject LineSettingPage;
     public GameObject ParticleSettingPage;
+
+    [Header("3D Object Painting")]
+    private bool isPaintingOn3D = false;
+    private PaintManager currentPaintManager;
+    private GameObject lastHitObject;
+    private Vector3 lastPaintPosition;
 
     [Header("Two Point Line Mode")]
     public GameObject TwoPointActionButton;
@@ -29,57 +38,69 @@ public class DrawFunction : MonoBehaviour
     public LineRenderer tempLineRenderer;
 
     [Header("Particle Settings")]
-    public GameObject particlePrefab; // 粒子系統預製體
+    public GameObject particlePrefab;
     public List<ParticleSystem> particleList = new List<ParticleSystem>();
     private ParticleSystem currentParticleSystem;
     private bool particleActive = false;
     private Vector3 lastParticlePosition;
 
+    [Header("UI Objects")]
+    public GameObject Warning;
+    public GameObject Distance;
+
+    [Header("UI Buttons")]
     public Button UndoButton;
     public Button ResetButton;
     public Button FinishButton;
     public Button ClearAllButton;
 
+    [Header("UI Sliders")]
     public Slider WidthSlider;
     public Slider ScaleSlider;
     public Slider DistanceSlider;
     public Slider GapSlider;
 
+    [Header("UI Input Fields")]
     public InputField WidthInputField;
     public InputField ScaleInputField;
     public InputField DistanceInputField;
     public InputField GapInputField;
 
+    [Header("Materials")]
     public Material LineMaterial;
 
+    [Header("Drawing Variables")]
     Vector3 anchor = new Vector3(0, 0, 0.3f);
-    Vector3 lastAnchor; // 記錄上一個錨點位置
+    Vector3 lastAnchor;
+    bool anchorUpdate = false;
 
-    bool anchorUpdate = false; //should anchor update or not
+    public GameObject linePrefab;
+    LineRenderer lineRenderer;
+    public List<LineRenderer> lineList = new List<LineRenderer>();
+    public Transform linePool;
 
-    public GameObject linePrefab; //prefab which genrate the line for user
-
-    LineRenderer lineRenderer; //LineRenderer which connects and generate line
-
-    public List<LineRenderer> lineList = new List<LineRenderer>(); //List of lines drawn
-
-    public Transform linePool; //parent object
-
-    public bool use; //code is in use or not
-
-    public bool startLine; //already started line or not
-
+    public bool use;
+    public bool startLine;
     public bool in3DDraw;
     public bool in2DDraw;
     public bool LineBrush;
     public bool ParticleBrush;
+    public bool SpaceMode;
+    public bool TextureMode;
+    private bool firstWarning;
 
-    // 控制參數
     [Header("Line Settings")]
     public float lineWidth = 0.02f;
     public float ParticleScale = 0.02f;
     public float cameraDistance = 0.3f;
-    public float gapThreshold = 0.01f; // 兩點間最小距離
+    public float gapThreshold = 0.01f;
+
+    [Header("3D Paint Settings")]
+    public float paintGapThreshold = 0.02f;
+
+    [Header("Texture Mode Click Control")]
+    private bool textureClickEnabled = false;
+    private bool hasProcessedClick = false;
 
     void Start()
     {
@@ -87,6 +108,8 @@ public class DrawFunction : MonoBehaviour
         InitializeUI();
         SetupUIListeners();
         LineBrushSelection();
+
+        SpaceModeSelection();
 
         if (fcp != null && LineMaterial != null)
         {
@@ -105,17 +128,24 @@ public class DrawFunction : MonoBehaviour
             in2DDraw = false;
             DrawPanel.SetActive(true);
             uiManager.SwitchToPanel(uiManager.BrushPanel);
+            LineBrushSelection();
+            SpaceModeSelection();
         });
 
         _2DDraw?.onClick.AddListener(() => {
             LineBrush = true;
             ParticleBrush = false;
             in2DDraw = true;
-            in3DDraw = false;     // 確保其他模式為false
+            in3DDraw = false;
+            //DrawPanel.SetActive(true);
+            uiManager.SwitchToPanel(uiManager.BrushPanel);
         });
 
         LBrush.GetComponent<Button>().onClick.AddListener(() => LineBrushSelection());
         PBrush.GetComponent<Button>().onClick.AddListener(() => ParticleBrushSelection());
+
+        SpaceModeButton.GetComponent<Button>().onClick.AddListener(() => SpaceModeSelection());
+        TextureModeButton.GetComponent<Button>().onClick.AddListener(() => TextureModeSelection());
 
         TwoPointActionButton.GetComponent<Button>().onClick.AddListener(() => {
             ToggleTwoPointAction();
@@ -153,17 +183,15 @@ public class DrawFunction : MonoBehaviour
         if (GapSlider != null)
         {
             GapSlider.value = gapThreshold;
-            GapSlider.minValue = 0.001f;  // 最小間隔
+            GapSlider.minValue = 0.001f;
             GapSlider.maxValue = 0.1f;
         }
 
-        // 同步InputField
         UpdateInputFields();
     }
 
     void SetupUIListeners()
     {
-        // Slider事件
         if (WidthSlider != null)
             WidthSlider.onValueChanged.AddListener(OnWidthSliderChanged);
 
@@ -176,7 +204,6 @@ public class DrawFunction : MonoBehaviour
         if (GapSlider != null)
             GapSlider.onValueChanged.AddListener(OnGapSliderChanged);
 
-        // InputField事件
         if (WidthInputField != null)
             WidthInputField.onEndEdit.AddListener(OnWidthInputChanged);
 
@@ -194,7 +221,11 @@ public class DrawFunction : MonoBehaviour
     {
         if (use)
         {
-            if (startLine)
+            if (TextureMode && in3DDraw && LineBrush)
+            {
+                Handle3DPainting();
+            }
+            else if (SpaceMode && startLine)
             {
                 UpdateAnchor();
                 DrawLinewContinue();
@@ -203,14 +234,369 @@ public class DrawFunction : MonoBehaviour
 
         if (ParticleBrush && particleActive)
         {
-            UpdateAnchor();
-            DrawParticleContinue();
+            if (TextureMode && in3DDraw)
+            {
+                Handle3DParticlePainting();
+            }
+            else if (SpaceMode)
+            {
+                UpdateAnchor();
+                DrawParticleContinue();
+            }
         }
 
-        if (in3DDraw && StraightLine && waitingForSecondPoint && tempLineRenderer != null)
+        // 預覽線條更新 - 只在Space模式或Texture模式等待第二個點時更新
+        if (StraightLine && waitingForSecondPoint && tempLineRenderer != null)
         {
-            UpdateAnchor();
-            tempLineRenderer.SetPosition(1, anchor);
+            if (SpaceMode)
+            {
+                UpdateAnchor();
+                tempLineRenderer.SetPosition(1, anchor);
+            }
+            else if (TextureMode)
+            {
+                Ray ray = arCamera.ScreenPointToRay(Input.mousePosition);
+                RaycastHit hit;
+
+                if (Physics.Raycast(ray, out hit, 100f))
+                {
+                    tempLineRenderer.SetPosition(1, hit.point);
+                }
+            }
+        }
+    }
+
+    void Handle3DPainting()
+    {
+        Ray ray = arCamera.ScreenPointToRay(Input.mousePosition);
+        RaycastHit hit;
+
+        if (Physics.Raycast(ray, out hit, 100f))
+        {
+            // 如果啟用直線模式，只在點擊時處理
+            if (StraightLine)
+            {
+                if (textureClickEnabled && !hasProcessedClick)
+                {
+                    HandleTexture3DTwoPointDrawing(hit);
+                    hasProcessedClick = true;
+                }
+                return;
+            }
+
+            // 連續繪製模式的原有邏輯
+            if (hit.collider.gameObject.layer == LayerMask.NameToLayer("SculptObject"))
+            {
+                CubeCarvingSystem carvingSystem = hit.collider.GetComponent<CubeCarvingSystem>();
+                if (carvingSystem != null)
+                {
+                    float distance = Vector3.Distance(hit.point, lastPaintPosition);
+                    if (distance >= gapThreshold || lastHitObject != hit.collider.gameObject)
+                    {
+                        PaintManager paintManager = hit.collider.GetComponent<PaintManager>();
+                        if (paintManager == null)
+                        {
+                            paintManager = hit.collider.gameObject.AddComponent<PaintManager>();
+                        }
+
+                        paintManager.paintColor = LineMaterial.color;
+                        paintManager.brushSize = lineWidth;
+
+                        Vector3 adjustedNormal = hit.normal;
+                        if (Vector3.Dot(adjustedNormal, ray.direction) > 0)
+                        {
+                            adjustedNormal = -adjustedNormal;
+                        }
+
+                        paintManager.PaintAt(hit.point, hit.normal);
+
+                        currentPaintManager = paintManager;
+                        lastHitObject = hit.collider.gameObject;
+                        lastPaintPosition = hit.point;
+                    }
+                }
+            }
+            else
+            {
+                float distance = Vector3.Distance(hit.point, lastPaintPosition);
+                if (distance >= gapThreshold || lastHitObject != hit.collider.gameObject)
+                {
+                    if (lineRenderer == null || lastHitObject != hit.collider.gameObject)
+                    {
+                        CreateSurfaceLineRenderer(hit.point);
+                    }
+                    else
+                    {
+                        AddPointToSurfaceLine(hit.point);
+                    }
+
+                    lastHitObject = hit.collider.gameObject;
+                    lastPaintPosition = hit.point;
+                }
+            }
+        }
+    }
+
+    void CreateSurfaceLineRenderer(Vector3 startPoint)
+    {
+        GameObject tempLine = Instantiate(linePrefab);
+        tempLine.transform.SetParent(linePool);
+        tempLine.transform.position = Vector3.zero;
+        tempLine.transform.localScale = Vector3.one;
+
+        lineRenderer = tempLine.GetComponent<LineRenderer>();
+        lineRenderer.positionCount = 1;
+        lineRenderer.SetPosition(0, startPoint);
+
+        Material lineMaterialInstance = new Material(LineMaterial);
+        lineRenderer.material = lineMaterialInstance;
+        lineRenderer.startWidth = lineWidth;
+        lineRenderer.endWidth = lineWidth;
+
+        lineList.Add(lineRenderer);
+    }
+
+    // 新增方法：向表面線條添加點
+    void AddPointToSurfaceLine(Vector3 newPoint)
+    {
+        if (lineRenderer != null)
+        {
+            lineRenderer.positionCount++;
+            lineRenderer.SetPosition(lineRenderer.positionCount - 1, newPoint);
+        }
+    }
+
+    void Handle3DParticlePainting()
+    {
+        Ray ray = arCamera.ScreenPointToRay(Input.mousePosition);
+        RaycastHit hit;
+
+        if (Physics.Raycast(ray, out hit, 100f))
+        {
+            // 如果啟用直線模式，只在點擊時處理
+            if (StraightLine)
+            {
+                if (textureClickEnabled && !hasProcessedClick)
+                {
+                    HandleTexture3DTwoPointParticle(hit);
+                    hasProcessedClick = true;
+                }
+                return;
+            }
+
+            // 連續繪製模式的原有邏輯
+            float distance = Vector3.Distance(hit.point, lastParticlePosition);
+            if (distance >= gapThreshold)
+            {
+                CreateParticleAtPosition(hit.point);
+                lastParticlePosition = hit.point;
+            }
+        }
+    }
+
+    void HandleTexture3DTwoPointDrawing(RaycastHit hit)
+    {
+        if (!waitingForSecondPoint)
+        {
+            // 第一個點
+            firstPoint = hit.point;
+            waitingForSecondPoint = true;
+
+            // 創建預覽線條
+            CreateTempTextureLineRenderer(hit.point);
+
+            Debug.Log("設置第一個點: " + firstPoint);
+        }
+        else
+        {
+            // 第二個點 - 完成繪製
+            Vector3 secondPoint = hit.point;
+
+            Debug.Log("設置第二個點: " + secondPoint + "，完成直線繪製");
+
+            // 判斷是否為SculptObject來決定繪製方式
+            if (hit.collider.gameObject.layer == LayerMask.NameToLayer("SculptObject"))
+            {
+                DrawStraightLineOnSculptObject(firstPoint, secondPoint, hit.collider.gameObject);
+            }
+            else
+            {
+                CompleteTextureSurfaceLine(firstPoint, secondPoint);
+            }
+
+            // 重置狀態，準備下一條直線
+            ResetTwoPointState();
+        }
+    }
+
+    // 新增：處理Texture模式下的兩點粒子繪製
+    void HandleTexture3DTwoPointParticle(RaycastHit hit)
+    {
+        if (!waitingForSecondPoint)
+        {
+            // 第一個點
+            firstPoint = hit.point;
+            waitingForSecondPoint = true;
+
+            // 創建第一個粒子作為起點標記
+            CreateParticleAtPosition(hit.point);
+
+            Debug.Log("設置第一個粒子點: " + firstPoint);
+        }
+        else
+        {
+            // 第二個點 - 繪製直線粒子
+            Vector3 secondPoint = hit.point;
+
+            Debug.Log("設置第二個粒子點: " + secondPoint + "，完成直線粒子繪製");
+
+            DrawStraightParticleLine(firstPoint, secondPoint);
+
+            // 重置狀態，準備下一條直線
+            ResetTwoPointState();
+        }
+    }
+
+    void ResetTwoPointState()
+    {
+        waitingForSecondPoint = false;
+        if (tempLineRenderer != null)
+        {
+            Destroy(tempLineRenderer.gameObject);
+            tempLineRenderer = null;
+        }
+
+        Debug.Log("重置兩點狀態，準備下一條直線");
+    }
+
+
+    // 新增：創建Texture模式的預覽線條
+    void CreateTempTextureLineRenderer(Vector3 startPoint)
+    {
+        GameObject tempLine = Instantiate(linePrefab);
+        tempLine.transform.SetParent(linePool);
+        tempLine.transform.position = Vector3.zero;
+        tempLine.transform.localScale = Vector3.one;
+
+        tempLineRenderer = tempLine.GetComponent<LineRenderer>();
+        tempLineRenderer.positionCount = 2;
+        tempLineRenderer.SetPosition(0, startPoint);
+        tempLineRenderer.SetPosition(1, startPoint);
+
+        Material tempMaterial = new Material(LineMaterial);
+        tempMaterial.color = new Color(LineMaterial.color.r, LineMaterial.color.g, LineMaterial.color.b, 0.5f);
+        tempLineRenderer.material = tempMaterial;
+        tempLineRenderer.startWidth = lineWidth;
+        tempLineRenderer.endWidth = lineWidth;
+    }
+
+    // 新增：在SculptObject上繪製直線
+    void DrawStraightLineOnSculptObject(Vector3 startPoint, Vector3 endPoint, GameObject sculptObject)
+    {
+        PaintManager paintManager = sculptObject.GetComponent<PaintManager>();
+        if (paintManager == null)
+        {
+            paintManager = sculptObject.AddComponent<PaintManager>();
+        }
+
+        paintManager.paintColor = LineMaterial.color;
+        paintManager.brushSize = lineWidth;
+
+        // 在起點和終點之間插值繪製
+        float distance = Vector3.Distance(startPoint, endPoint);
+        int steps = Mathf.RoundToInt(distance / (gapThreshold * 0.5f));
+        steps = Mathf.Max(steps, 10); // 增加最小步數確保連續性
+
+        for (int i = 0; i <= steps; i++)
+        {
+            float t = (float)i / steps;
+            Vector3 interpolatedPoint = Vector3.Lerp(startPoint, endPoint, t);
+
+            Vector3 hitPoint;
+            Vector3 hitNormal;
+
+            // 嘗試找到表面點
+            if (FindSurfacePointForSculpt(interpolatedPoint, sculptObject, out hitPoint, out hitNormal))
+            {
+                paintManager.PaintAt(hitPoint, hitNormal);
+            }
+        }
+    }
+
+    bool FindSurfacePointForSculpt(Vector3 targetPoint, GameObject sculptObject, out Vector3 hitPoint, out Vector3 hitNormal)
+    {
+        hitPoint = Vector3.zero;
+        hitNormal = Vector3.zero;
+
+        // 獲取物件的碰撞器
+        Collider objectCollider = sculptObject.GetComponent<Collider>();
+        if (objectCollider == null)
+        {
+            Debug.LogWarning("SculptObject沒有碰撞器！");
+            return false;
+        }
+
+        // 使用ClosestPoint來找到最近的表面點
+        Vector3 closestPoint = objectCollider.ClosestPoint(targetPoint);
+
+        // 計算法線（從物件中心指向表面點）
+        Vector3 center = objectCollider.bounds.center;
+        Vector3 normal = (closestPoint - center).normalized;
+
+        // 進行微調射線檢測來獲得更精確的法線
+        Ray ray = new Ray(closestPoint + normal * 0.01f, -normal);
+        RaycastHit hit;
+
+        if (Physics.Raycast(ray, out hit, 0.02f))
+        {
+            if (hit.collider.gameObject == sculptObject)
+            {
+                hitPoint = hit.point;
+                hitNormal = hit.normal;
+                return true;
+            }
+        }
+
+        // 如果射線檢測失敗，使用ClosestPoint的結果
+        hitPoint = closestPoint;
+        hitNormal = normal;
+        return true;
+    }
+
+
+    // 新增：完成表面線條繪製
+    void CompleteTextureSurfaceLine(Vector3 startPoint, Vector3 endPoint)
+    {
+        GameObject finalLine = Instantiate(linePrefab);
+        finalLine.transform.SetParent(linePool);
+        finalLine.transform.position = Vector3.zero;
+        finalLine.transform.localScale = Vector3.one;
+
+        LineRenderer finalLineRenderer = finalLine.GetComponent<LineRenderer>();
+        finalLineRenderer.positionCount = 2;
+        finalLineRenderer.SetPosition(0, startPoint);
+        finalLineRenderer.SetPosition(1, endPoint);
+
+        Material lineMaterialInstance = new Material(LineMaterial);
+        finalLineRenderer.material = lineMaterialInstance;
+        finalLineRenderer.startWidth = lineWidth;
+        finalLineRenderer.endWidth = lineWidth;
+
+        lineList.Add(finalLineRenderer);
+    }
+
+    // 新增：繪製直線粒子
+    void DrawStraightParticleLine(Vector3 startPoint, Vector3 endPoint)
+    {
+        float distance = Vector3.Distance(startPoint, endPoint);
+        int particleCount = Mathf.RoundToInt(distance / (gapThreshold * 2f));
+        particleCount = Mathf.Max(particleCount, 2);
+
+        for (int i = 0; i <= particleCount; i++)
+        {
+            float t = (float)i / particleCount;
+            Vector3 particlePosition = Vector3.Lerp(startPoint, endPoint, t);
+            CreateParticleAtPosition(particlePosition);
         }
     }
 
@@ -219,7 +605,7 @@ public class DrawFunction : MonoBehaviour
         if (anchorUpdate)
         {
             Vector3 temp = Input.mousePosition;
-            temp.z = cameraDistance; // 使用可調整的距離
+            temp.z = cameraDistance;
             anchor = arCamera.ScreenToWorldPoint(temp);
         }
     }
@@ -244,16 +630,48 @@ public class DrawFunction : MonoBehaviour
         ParticleSettingPage.SetActive(true);
     }
 
+    private void SpaceModeSelection()
+    {
+        SpaceMode = true;
+        TextureMode = false;
+        isPaintingOn3D = false;
+        Distance.SetActive(true);
+
+        SpaceModeButton.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
+        TextureModeButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
+    }
+
+    private void TextureModeSelection()
+    {
+        if (!firstWarning)
+        {
+            Warning.SetActive(true);
+            firstWarning = true;
+        }
+
+        SpaceMode = false;
+        TextureMode = true;
+        Distance.SetActive(false);
+
+        SpaceModeButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
+        TextureModeButton.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
+    }
+
     public void MakeLineRenderer()
     {
+        if (TextureMode)
+        {
+            return;
+        }
+
         GameObject tempLine = Instantiate(linePrefab);
         tempLine.transform.SetParent(linePool);
         tempLine.transform.position = Vector3.zero;
-        tempLine.transform.localScale = new Vector3(1, 1, 1);
+        tempLine.transform.localScale = Vector3.one;
 
         anchorUpdate = true;
         UpdateAnchor();
-        lastAnchor = anchor; // 記錄初始位置
+        lastAnchor = anchor;
 
         lineRenderer = tempLine.GetComponent<LineRenderer>();
         lineRenderer.positionCount = 1;
@@ -261,7 +679,6 @@ public class DrawFunction : MonoBehaviour
 
         Material lineMaterialInstance = new Material(LineMaterial);
         lineRenderer.material = lineMaterialInstance;
-
         lineRenderer.startWidth = lineWidth;
         lineRenderer.endWidth = lineWidth;
 
@@ -271,51 +688,20 @@ public class DrawFunction : MonoBehaviour
 
     public void DrawLinewContinue()
     {
-        // 檢查是否滿足Gap條件（兩點間距離）
         float distance = Vector3.Distance(anchor, lastAnchor);
 
         if (distance >= gapThreshold)
         {
             lineRenderer.positionCount = lineRenderer.positionCount + 1;
             lineRenderer.SetPosition(lineRenderer.positionCount - 1, anchor);
-            lastAnchor = anchor; // 更新上一個錨點
+            lastAnchor = anchor;
         }
     }
 
-    void MakeParticleSystem()
-    {
-        if (particlePrefab == null)
-        {
-            Debug.LogError("Particle Prefab is not assigned!");
-            return;
-        }
-
-        GameObject tempParticle = Instantiate(particlePrefab);
-        tempParticle.transform.SetParent(linePool);
-        tempParticle.transform.position = anchor;
-        tempParticle.transform.localScale = Vector3.one;
-
-        currentParticleSystem = tempParticle.GetComponent<ParticleSystem>();
-
-        if (currentParticleSystem != null)
-        {
-            // 設定基本粒子參數
-            var main = currentParticleSystem.main;
-            main.startColor = LineMaterial.color; // 使用當前選擇的顏色
-
-            particleList.Add(currentParticleSystem);
-        }
-        else
-        {
-            Debug.LogError("Particle Prefab doesn't have ParticleSystem component!");
-        }
-    }
-
-    public void DrawParticleContinue()
+    void DrawParticleContinue()
     {
         float distance = Vector3.Distance(anchor, lastParticlePosition);
 
-        // 使用與線條相同的品質閾值來控制粒子生成間隔
         if (distance >= gapThreshold)
         {
             CreateParticleAtPosition(anchor);
@@ -340,16 +726,12 @@ public class DrawFunction : MonoBehaviour
 
         if (newParticleSystem != null)
         {
-            // 設定粒子系統參數
             var main = newParticleSystem.main;
             main.startColor = LineMaterial.color;
-
-            // 可以設定粒子的其他屬性
             main.startSize = ParticleScale * 5f;
 
             particleList.Add(newParticleSystem);
 
-            // 設定粒子系統在播放完畢後自動停止
             var stopAction = newParticleSystem.main;
             stopAction.stopAction = ParticleSystemStopAction.Destroy;
         }
@@ -362,28 +744,28 @@ public class DrawFunction : MonoBehaviour
 
     void HandleTwoPointDrawing()
     {
+        if (TextureMode)
+        {
+            return;
+        }
+
         if (!waitingForSecondPoint)
         {
-            // 設置第一個點
             anchorUpdate = true;
             UpdateAnchor();
             firstPoint = anchor;
-            waitingForSecondPoint = true;
 
-            // 創建暫時的線條來預覽
+            waitingForSecondPoint = true;
             CreateTempLineRenderer();
         }
         else
         {
-            // 設置第二個點並完成線條
             anchorUpdate = true;
             UpdateAnchor();
             Vector3 secondPoint = anchor;
 
-            // 完成線條
             CompleteTwoPointLine(firstPoint, secondPoint);
 
-            // 重置狀態
             waitingForSecondPoint = false;
             if (tempLineRenderer != null)
             {
@@ -398,16 +780,15 @@ public class DrawFunction : MonoBehaviour
         GameObject tempLine = Instantiate(linePrefab);
         tempLine.transform.SetParent(linePool);
         tempLine.transform.position = Vector3.zero;
-        tempLine.transform.localScale = new Vector3(1, 1, 1);
+        tempLine.transform.localScale = Vector3.one;
 
         tempLineRenderer = tempLine.GetComponent<LineRenderer>();
         tempLineRenderer.positionCount = 2;
         tempLineRenderer.SetPosition(0, firstPoint);
-        tempLineRenderer.SetPosition(1, firstPoint); // 初始時兩點相同
+        tempLineRenderer.SetPosition(1, firstPoint);
 
-        // 設置材質和寬度
         Material tempMaterial = new Material(LineMaterial);
-        tempMaterial.color = new Color(LineMaterial.color.r, LineMaterial.color.g, LineMaterial.color.b, 0.5f); // 半透明預覽
+        tempMaterial.color = new Color(LineMaterial.color.r, LineMaterial.color.g, LineMaterial.color.b, 0.5f);
         tempLineRenderer.material = tempMaterial;
         tempLineRenderer.startWidth = lineWidth;
         tempLineRenderer.endWidth = lineWidth;
@@ -418,38 +799,33 @@ public class DrawFunction : MonoBehaviour
         GameObject finalLine = Instantiate(linePrefab);
         finalLine.transform.SetParent(linePool);
         finalLine.transform.position = Vector3.zero;
-        finalLine.transform.localScale = new Vector3(1, 1, 1);
+        finalLine.transform.localScale = Vector3.one;
 
         LineRenderer finalLineRenderer = finalLine.GetComponent<LineRenderer>();
         finalLineRenderer.positionCount = 2;
         finalLineRenderer.SetPosition(0, point1);
         finalLineRenderer.SetPosition(1, point2);
 
-        // 設置材質和寬度
         Material lineMaterialInstance = new Material(LineMaterial);
         finalLineRenderer.material = lineMaterialInstance;
         finalLineRenderer.startWidth = lineWidth;
         finalLineRenderer.endWidth = lineWidth;
 
-        // 添加到線條列表
         lineList.Add(finalLineRenderer);
     }
 
     public void ToggleTwoPointAction()
     {
-        if (!in3DDraw) return;
-
         StraightLine = !StraightLine;
 
         if (!StraightLine)
         {
             TwoPointActionButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
-            waitingForSecondPoint = false;
-            if (tempLineRenderer != null)
-            {
-                Destroy(tempLineRenderer.gameObject);
-                tempLineRenderer = null;
-            }
+
+            // 重置所有兩點繪製相關狀態
+            ResetTwoPointState();
+            textureClickEnabled = false;
+            hasProcessedClick = false;
         }
         else
         {
@@ -457,7 +833,31 @@ public class DrawFunction : MonoBehaviour
         }
     }
 
-    // UI事件處理方法
+    void HandleSpaceParticleTwoPoint()
+    {
+        if (!waitingForSecondPoint)
+        {
+            anchorUpdate = true;
+            UpdateAnchor();
+            firstPoint = anchor;
+            waitingForSecondPoint = true;
+
+            // 創建第一個粒子
+            CreateParticleAtPosition(anchor);
+        }
+        else
+        {
+            anchorUpdate = true;
+            UpdateAnchor();
+            Vector3 secondPoint = anchor;
+
+            // 繪製直線粒子
+            DrawStraightParticleLine(firstPoint, secondPoint);
+
+            waitingForSecondPoint = false;
+        }
+    }
+
     public void OnWidthSliderChanged(float value)
     {
         lineWidth = value;
@@ -485,14 +885,12 @@ public class DrawFunction : MonoBehaviour
 
     public void OnWidthInputChanged(string value)
     {
-        // 移除%符號和空格
         string cleanValue = value.Replace("%", "").Trim();
 
         if (float.TryParse(cleanValue, out float displayValue))
         {
-            // 將顯示值(10~1000)轉換為實際值(0.001f~0.1f)
             displayValue = Mathf.Clamp(displayValue, 10f, 500f);
-            float actualValue = (displayValue / 100f) * 0.01f; // 100 = 0.01f
+            float actualValue = (displayValue / 100f) * 0.01f;
             lineWidth = actualValue;
             if (WidthSlider != null)
                 WidthSlider.value = lineWidth;
@@ -508,7 +906,7 @@ public class DrawFunction : MonoBehaviour
         if (float.TryParse(cleanValue, out float displayValue))
         {
             displayValue = Mathf.Clamp(displayValue, 10f, 500f);
-            float actualValue = (displayValue / 100f) * 0.01f; // 100 = 0.01f
+            float actualValue = (displayValue / 100f) * 0.01f;
             ParticleScale = actualValue;
             if (ScaleSlider != null)
                 ScaleSlider.value = ParticleScale;
@@ -533,10 +931,9 @@ public class DrawFunction : MonoBehaviour
 
         if (float.TryParse(cleanValue, out float inputValue))
         {
-            // 直接限制在實際範圍內
             gapThreshold = Mathf.Clamp(inputValue, 0.001f, 0.05f);
             if (GapSlider != null)
-                GapSlider.value = gapThreshold; // 直接設定實際值給Slider
+                GapSlider.value = gapThreshold;
         }
         UpdateInputFields();
     }
@@ -545,13 +942,13 @@ public class DrawFunction : MonoBehaviour
     {
         if (WidthInputField != null)
         {
-            float displayWidth = (lineWidth / 0.01f) * 100f; // 0.01f = 100
+            float displayWidth = (lineWidth / 0.01f) * 100f;
             WidthInputField.text = displayWidth.ToString("F0");
         }
 
         if (ScaleInputField != null)
         {
-            float displayScale = (ParticleScale / 0.01f) * 100f; // 0.01f = 100
+            float displayScale = (ParticleScale / 0.01f) * 100f;
             ScaleInputField.text = displayScale.ToString("F0");
         }
 
@@ -573,34 +970,49 @@ public class DrawFunction : MonoBehaviour
         }
     }
 
-    // 應用設定到所有現有線條
-    public void ApplySettingsToAllLines()
-    {
-        foreach (LineRenderer line in lineList)
-        {
-            if (line != null)
-            {
-                line.startWidth = lineWidth;
-                line.endWidth = lineWidth;
-            }
-        }
-    }
-
     private void OnChangeColor(Color co)
     {
         LineMaterial.color = co;
     }
 
-    //to start drawing line
     public void StartDrawLine()
     {
         if (LineBrush)
         {
-            if (in3DDraw && StraightLine)
+            if (in3DDraw)
             {
-                HandleTwoPointDrawing();
+                if (TextureMode)
+                {
+                    if (StraightLine)
+                    {
+                        // Texture模式直線：啟用點擊觸發
+                        textureClickEnabled = true;
+                        hasProcessedClick = false;
+                        use = true;
+                    }
+                    else
+                    {
+                        // Texture模式連續繪製
+                        use = true;
+                    }
+                    return;
+                }
+
+                // Space模式邏輯保持不變
+                if (StraightLine)
+                {
+                    HandleTwoPointDrawing();
+                }
+                else
+                {
+                    use = true;
+                    if (!startLine)
+                    {
+                        MakeLineRenderer();
+                    }
+                }
             }
-            else
+            else if (in2DDraw)
             {
                 use = true;
                 if (!startLine)
@@ -615,9 +1027,22 @@ public class DrawFunction : MonoBehaviour
         }
     }
 
-    //to End the line which user started drawing
     public void StopDrawLine()
     {
+        if (TextureMode && LineBrush)
+        {
+            use = false;
+
+            // 重置點擊控制狀態
+            textureClickEnabled = false;
+            hasProcessedClick = false;
+
+            // 重置線條渲染器引用
+            lineRenderer = null;
+            return;
+        }
+
+        // Space模式的原有邏輯保持不變
         if (LineBrush && lineRenderer != null)
         {
             if (lineRenderer.positionCount == 1)
@@ -653,11 +1078,47 @@ public class DrawFunction : MonoBehaviour
     {
         if (!particleActive)
         {
-            anchorUpdate = true;
-            UpdateAnchor();
-            MakeParticleSystem();
-            CreateParticleAtPosition(anchor);
-            particleActive = true;
+            if (SpaceMode)
+            {
+                if (StraightLine)
+                {
+                    HandleSpaceParticleTwoPoint();
+                }
+                else
+                {
+                    anchorUpdate = true;
+                    UpdateAnchor();
+                    CreateParticleAtPosition(anchor);
+                    lastParticlePosition = anchor;
+                    particleActive = true;
+                }
+            }
+            else if (TextureMode && in3DDraw)
+            {
+                if (StraightLine)
+                {
+                    // Texture模式直線粒子：啟用點擊觸發
+                    textureClickEnabled = true;
+                    hasProcessedClick = false;
+                    particleActive = true;
+                }
+                else
+                {
+                    Ray ray = arCamera.ScreenPointToRay(Input.mousePosition);
+                    RaycastHit hit;
+
+                    if (Physics.Raycast(ray, out hit, 100f))
+                    {
+                        CreateParticleAtPosition(hit.point);
+                        lastParticlePosition = hit.point;
+                        particleActive = true;
+                    }
+                    else
+                    {
+                        return;
+                    }
+                }
+            }
         }
     }
 
@@ -667,29 +1128,37 @@ public class DrawFunction : MonoBehaviour
         {
             particleActive = false;
             anchorUpdate = false;
+
+            // 如果是Texture模式，重置點擊控制狀態
+            if (TextureMode)
+            {
+                textureClickEnabled = false;
+                hasProcessedClick = false;
+            }
         }
     }
 
-    //To Undo Last Drawn Line
     public void Undo()
     {
         if (ParticleBrush && particleList.Count > 0)
         {
-            // 撤銷最後一個粒子系統
             ParticleSystem undoParticle = particleList[particleList.Count - 1];
             Destroy(undoParticle.gameObject);
             particleList.RemoveAt(particleList.Count - 1);
         }
         else if (LineBrush && lineList.Count > 0)
         {
-            // 原有的線條撤銷邏輯
             LineRenderer undo = lineList[lineList.Count - 1];
             Destroy(undo.gameObject);
             lineList.RemoveAt(lineList.Count - 1);
         }
+
+        if (currentPaintManager != null)
+        {
+
+        }
     }
 
-    //To clear all the lines
     public void ClearScreen()
     {
         foreach (LineRenderer item in lineList)
@@ -698,12 +1167,17 @@ public class DrawFunction : MonoBehaviour
         }
         lineList.Clear();
 
-        // 清除所有粒子
         foreach (ParticleSystem particle in particleList)
         {
             Destroy(particle.gameObject);
         }
         particleList.Clear();
+
+        PaintManager[] allPaintManagers = FindObjectsOfType<PaintManager>();
+        foreach (PaintManager pm in allPaintManagers)
+        {
+            pm.ClearPaint();
+        }
     }
 
     void OnResetButtonClicked()
@@ -741,18 +1215,27 @@ public class DrawFunction : MonoBehaviour
             Destroy(tempLineRenderer.gameObject);
             tempLineRenderer = null;
         }
+
+        isPaintingOn3D = false;
+        currentPaintManager = null;
+        lastHitObject = null;
+
+        SpaceModeSelection();
     }
 
     void OnFinishButtonClicked()
     {
         uiManager.inDraw = false;
         uiManager.isInColorPage = false;
+        uiManager.ColorPage2.SetActive(false);
+        uiManager.BasicEditPage.SetActive(true);
 
         in3DDraw = false;
         StraightLine = false;
         in2DDraw = false;
         LineBrush = false;
         ParticleBrush = false;
+        isPaintingOn3D = false;
 
         DrawPanel.SetActive(false);
         uiManager.DrawPanel1?.SetActive(false);
@@ -768,5 +1251,22 @@ public class DrawFunction : MonoBehaviour
             Destroy(tempLineRenderer.gameObject);
             tempLineRenderer = null;
         }
+
+        currentPaintManager = null;
+        lastHitObject = null;
+
+        SpaceModeSelection();
+    }
+
+    void ResetAllDrawingStates()
+    {
+        ResetTwoPointState();
+        textureClickEnabled = false;
+        hasProcessedClick = false;
+        use = false;
+        particleActive = false;
+        startLine = false;
+        anchorUpdate = false;
+        lineRenderer = null;
     }
 }

@@ -11,6 +11,17 @@ public enum VoxelShape
     Cylinder
 }
 
+public enum UVMode
+{
+    Continuous,      // 連續 UV（原本的方式）
+    UnwrappedFaces  // 展開的獨立面 UV
+}
+
+public enum FaceDirection
+{
+    Up, Down, Left, Right, Forward, Back
+}
+
 public struct ModelData
 {
     public string filename;
@@ -41,14 +52,20 @@ public class CubeCarvingSystem : MonoBehaviour
     [SerializeField] private Material cubeMaterial;
     [SerializeField] private VoxelShape shapeType = VoxelShape.Cube;
 
+    [Header("UV Mapping")]
+    [SerializeField] private UVMode uvMode = UVMode.UnwrappedFaces;
+    [SerializeField] private float uvPadding = 0.01f; // UV 區域之間的間隔
+
     [Header("Debug")]
     [SerializeField] private bool showDebugInfo = false;
+    [SerializeField] private bool showUVDebug = false;
     [SerializeField] private float meshUpdateDelay = 0.1f;
     private float lastMeshUpdateTime = 0f;
 
     private List<Vector3> reusableVertices = new List<Vector3>();
     private List<int> reusableTriangles = new List<int>();
     private List<Vector3> reusableNormals = new List<Vector3>();
+    private List<Vector2> reusableUVs = new List<Vector2>();
 
     private bool[,,] voxels;
     private Mesh mesh;
@@ -57,6 +74,19 @@ public class CubeCarvingSystem : MonoBehaviour
     private List<CubeCarvingTool> activeCarvingTools = new List<CubeCarvingTool>();
     private MeshCollider meshCollider;
     private bool componentsInitialized = false;
+
+    // UV 展開配置
+    private class UVRegion
+    {
+        public Vector2 offset;
+        public Vector2 size;
+        
+        public UVRegion(Vector2 offset, Vector2 size)
+        {
+            this.offset = offset;
+            this.size = size;
+        }
+    }
 
     void Awake()
     {
@@ -71,10 +101,67 @@ public class CubeCarvingSystem : MonoBehaviour
         reusableVertices.Capacity = estimatedSize;
         reusableTriangles.Capacity = estimatedSize * 6;
         reusableNormals.Capacity = estimatedSize;
+        reusableUVs.Capacity = estimatedSize;
 
         InitializeVoxels();
         GenerateMesh();
         FindCarvingTools();
+        
+        if (showUVDebug)
+        {
+            CreateUVDebugTexture();
+        }
+    }
+
+    void CreateUVDebugTexture()
+    {
+        // 創建一個調試紋理來視覺化 UV 佈局
+        Texture2D debugTexture = new Texture2D(1024, 1024, TextureFormat.RGBA32, false);
+        Color[] pixels = new Color[1024 * 1024];
+        
+        // 填充背景
+        for (int i = 0; i < pixels.Length; i++)
+        {
+            pixels[i] = Color.gray;
+        }
+        
+        // 繪製 UV 區域
+        // 上面 - 紅色
+        DrawUVRegion(pixels, 1024, 0f, 0f, 1f/3f, 1f/2f, Color.red);
+        // 下面 - 綠色
+        DrawUVRegion(pixels, 1024, 1f/3f, 0f, 1f/3f, 1f/2f, Color.green);
+        // 前面 - 藍色
+        DrawUVRegion(pixels, 1024, 2f/3f, 0f, 1f/3f, 1f/2f, Color.blue);
+        // 後面 - 黃色
+        DrawUVRegion(pixels, 1024, 0f, 1f/2f, 1f/3f, 1f/2f, Color.yellow);
+        // 左面 - 青色
+        DrawUVRegion(pixels, 1024, 1f/3f, 1f/2f, 1f/3f, 1f/2f, Color.cyan);
+        // 右面 - 洋紅色
+        DrawUVRegion(pixels, 1024, 2f/3f, 1f/2f, 1f/3f, 1f/2f, Color.magenta);
+        
+        debugTexture.SetPixels(pixels);
+        debugTexture.Apply();
+        
+        if (meshRenderer != null && meshRenderer.material != null)
+        {
+            meshRenderer.material.mainTexture = debugTexture;
+        }
+    }
+
+    void DrawUVRegion(Color[] pixels, int textureSize, float u, float v, float width, float height, Color color)
+    {
+        int startX = Mathf.RoundToInt(u * textureSize);
+        int startY = Mathf.RoundToInt(v * textureSize);
+        int endX = Mathf.RoundToInt((u + width) * textureSize);
+        int endY = Mathf.RoundToInt((v + height) * textureSize);
+        
+        for (int y = startY; y < endY && y < textureSize; y++)
+        {
+            for (int x = startX; x < endX && x < textureSize; x++)
+            {
+                pixels[y * textureSize + x] = color;
+            }
+        }
     }
 
     void EnsureComponentsInitialized()
@@ -360,6 +447,7 @@ public class CubeCarvingSystem : MonoBehaviour
         reusableVertices.Clear();
         reusableTriangles.Clear();
         reusableNormals.Clear();
+        reusableUVs.Clear();
 
         float voxelSize = cubeSize / gridSize;
 
@@ -371,7 +459,7 @@ public class CubeCarvingSystem : MonoBehaviour
                 {
                     if (voxels[x, y, z])
                     {
-                        GenerateVoxelFaces(x, y, z, voxelSize, reusableVertices, reusableTriangles, reusableNormals);
+                        GenerateVoxelFaces(x, y, z, voxelSize, reusableVertices, reusableTriangles, reusableNormals, reusableUVs);
                     }
                 }
             }
@@ -390,6 +478,7 @@ public class CubeCarvingSystem : MonoBehaviour
             mesh.vertices = reusableVertices.ToArray();
             mesh.triangles = reusableTriangles.ToArray();
             mesh.normals = reusableNormals.ToArray();
+            mesh.uv = reusableUVs.ToArray();
             mesh.RecalculateBounds();
         }
 
@@ -420,66 +509,67 @@ public class CubeCarvingSystem : MonoBehaviour
         }
     }
 
-    void GenerateVoxelFaces(int x, int y, int z, float voxelSize, List<Vector3> meshVertices, List<int> triangles, List<Vector3> normals)
+    void GenerateVoxelFaces(int x, int y, int z, float voxelSize, List<Vector3> meshVertices, List<int> triangles, List<Vector3> normals, List<Vector2> uvs)
     {
         Vector3 voxelPos = VoxelToWorld(x, y, z);
 
         Vector3[] vertices = new Vector3[]
         {
-            voxelPos + new Vector3(0, 0, 0),
-            voxelPos + new Vector3(voxelSize, 0, 0),
-            voxelPos + new Vector3(0, voxelSize, 0),
-            voxelPos + new Vector3(voxelSize, voxelSize, 0),
-            voxelPos + new Vector3(0, 0, voxelSize),
-            voxelPos + new Vector3(voxelSize, 0, voxelSize),
-            voxelPos + new Vector3(0, voxelSize, voxelSize),
-            voxelPos + new Vector3(voxelSize, voxelSize, voxelSize)
+        voxelPos + new Vector3(0, 0, 0),
+        voxelPos + new Vector3(voxelSize, 0, 0),
+        voxelPos + new Vector3(0, voxelSize, 0),
+        voxelPos + new Vector3(voxelSize, voxelSize, 0),
+        voxelPos + new Vector3(0, 0, voxelSize),
+        voxelPos + new Vector3(voxelSize, 0, voxelSize),
+        voxelPos + new Vector3(0, voxelSize, voxelSize),
+        voxelPos + new Vector3(voxelSize, voxelSize, voxelSize)
         };
 
         if (y == 0 || !voxels[x, y - 1, z])
         {
-            AddQuad(meshVertices, triangles, normals,
+            AddQuadWithUV(meshVertices, triangles, normals, uvs,
                 new Vector3[] { vertices[0], vertices[1], vertices[5], vertices[4] },
-                Vector3.down);
+                Vector3.down, x, y, z, FaceDirection.Down);
         }
 
         if (y == gridSize - 1 || !voxels[x, y + 1, z])
         {
-            AddQuad(meshVertices, triangles, normals,
-                new Vector3[] { vertices[2], vertices[6], vertices[7], vertices[3] },
-                Vector3.up);
+            AddQuadWithUV(meshVertices, triangles, normals, uvs,
+                new Vector3[] { vertices[6], vertices[7], vertices[3], vertices[2] },
+                Vector3.up, x, y, z, FaceDirection.Up);
         }
 
         if (z == gridSize - 1 || !voxels[x, y, z + 1])
         {
-            AddQuad(meshVertices, triangles, normals,
+            AddQuadWithUV(meshVertices, triangles, normals, uvs,
                 new Vector3[] { vertices[4], vertices[5], vertices[7], vertices[6] },
-                Vector3.forward);
+                Vector3.forward, x, y, z, FaceDirection.Forward);
         }
 
         if (z == 0 || !voxels[x, y, z - 1])
         {
-            AddQuad(meshVertices, triangles, normals,
+            AddQuadWithUV(meshVertices, triangles, normals, uvs,
                 new Vector3[] { vertices[1], vertices[0], vertices[2], vertices[3] },
-                Vector3.back);
+                Vector3.back, x, y, z, FaceDirection.Back);
         }
 
         if (x == gridSize - 1 || !voxels[x + 1, y, z])
         {
-            AddQuad(meshVertices, triangles, normals,
+            AddQuadWithUV(meshVertices, triangles, normals, uvs,
                 new Vector3[] { vertices[1], vertices[3], vertices[7], vertices[5] },
-                Vector3.right);
+                Vector3.right, x, y, z, FaceDirection.Right);
         }
 
         if (x == 0 || !voxels[x - 1, y, z])
         {
-            AddQuad(meshVertices, triangles, normals,
+            AddQuadWithUV(meshVertices, triangles, normals, uvs,
                 new Vector3[] { vertices[0], vertices[4], vertices[6], vertices[2] },
-                Vector3.left);
+                Vector3.left, x, y, z, FaceDirection.Left);
         }
     }
 
-    void AddQuad(List<Vector3> meshVertices, List<int> triangles, List<Vector3> normals, Vector3[] quadVertices, Vector3 normal)
+    void AddQuadWithUV(List<Vector3> meshVertices, List<int> triangles, List<Vector3> normals, List<Vector2> uvs,
+        Vector3[] quadVertices, Vector3 normal, int voxelX, int voxelY, int voxelZ, FaceDirection face)
     {
         int startIndex = meshVertices.Count;
         meshVertices.AddRange(quadVertices);
@@ -487,10 +577,201 @@ public class CubeCarvingSystem : MonoBehaviour
         for (int i = 0; i < 4; i++)
             normals.Add(normal);
 
+        // 根據 UV 模式計算 UV 座標
+        Vector2[] quadUVs;
+        if (uvMode == UVMode.UnwrappedFaces)
+        {
+            quadUVs = CalculateUnwrappedUV(voxelX, voxelY, voxelZ, face);
+        }
+        else
+        {
+            quadUVs = CalculateContinuousUV(voxelX, voxelY, voxelZ, face);
+        }
+        
+        uvs.AddRange(quadUVs);
+
         triangles.AddRange(new int[] {
             startIndex, startIndex + 1, startIndex + 2,
             startIndex, startIndex + 2, startIndex + 3
         });
+    }
+
+    Vector2[] CalculateUnwrappedUV(int x, int y, int z, FaceDirection face)
+    {
+        UVRegion region;
+        float pad = uvPadding;
+
+        switch (face)
+        {
+            case FaceDirection.Up:
+                region = new UVRegion(new Vector2(0f + pad, 0f + pad), new Vector2(1f / 3f - 2 * pad, 1f / 2f - 2 * pad));
+                break;
+            case FaceDirection.Down:
+                region = new UVRegion(new Vector2(1f / 3f + pad, 0f + pad), new Vector2(1f / 3f - 2 * pad, 1f / 2f - 2 * pad));
+                break;
+            case FaceDirection.Forward:
+                region = new UVRegion(new Vector2(2f / 3f + pad, 0f + pad), new Vector2(1f / 3f - 2 * pad, 1f / 2f - 2 * pad));
+                break;
+            case FaceDirection.Back:
+                region = new UVRegion(new Vector2(0f + pad, 1f / 2f + pad), new Vector2(1f / 3f - 2 * pad, 1f / 2f - 2 * pad));
+                break;
+            case FaceDirection.Left:
+                region = new UVRegion(new Vector2(1f / 3f + pad, 1f / 2f + pad), new Vector2(1f / 3f - 2 * pad, 1f / 2f - 2 * pad));
+                break;
+            case FaceDirection.Right:
+                region = new UVRegion(new Vector2(2f / 3f + pad, 1f / 2f + pad), new Vector2(1f / 3f - 2 * pad, 1f / 2f - 2 * pad));
+                break;
+            default:
+                region = new UVRegion(Vector2.zero, Vector2.one);
+                break;
+        }
+
+        Vector2[] faceUVs = GetBaseFaceUVs(x, y, z, face);
+
+        for (int i = 0; i < 4; i++)
+        {
+            faceUVs[i] = region.offset + Vector2.Scale(faceUVs[i], region.size);
+        }
+
+        return faceUVs;
+    }
+
+    Vector2[] GetBaseFaceUVs(int x, int y, int z, FaceDirection face)
+    {
+        float u0, v0, u1, v1;
+
+        switch (face)
+        {
+            case FaceDirection.Down:
+                u0 = (float)x / gridSize;
+                v0 = (float)z / gridSize;
+                u1 = (float)(x + 1) / gridSize;
+                v1 = (float)(z + 1) / gridSize;
+                return new Vector2[] {
+                new Vector2(u0, v0), new Vector2(u1, v0), new Vector2(u1, v1), new Vector2(u0, v1)
+            };
+
+            case FaceDirection.Up:
+                u0 = (float)x / gridSize;
+                v0 = (float)z / gridSize;
+                u1 = (float)(x + 1) / gridSize;
+                v1 = (float)(z + 1) / gridSize;
+                return new Vector2[] {
+                new Vector2(u0, v1), new Vector2(u1, v1), new Vector2(u1, v0), new Vector2(u0, v0)
+            };
+
+            case FaceDirection.Forward:
+                u0 = (float)x / gridSize;
+                v0 = (float)y / gridSize;
+                u1 = (float)(x + 1) / gridSize;
+                v1 = (float)(y + 1) / gridSize;
+                return new Vector2[] {
+                new Vector2(u0, v0), new Vector2(u1, v0), new Vector2(u1, v1), new Vector2(u0, v1)
+            };
+
+            case FaceDirection.Back:
+                u0 = (float)x / gridSize;
+                v0 = (float)y / gridSize;
+                u1 = (float)(x + 1) / gridSize;
+                v1 = (float)(y + 1) / gridSize;
+                return new Vector2[] {
+                new Vector2(u1, v0), new Vector2(u0, v0), new Vector2(u0, v1), new Vector2(u1, v1)
+            };
+
+            case FaceDirection.Right:
+                u0 = (float)z / gridSize;
+                v0 = (float)y / gridSize;
+                u1 = (float)(z + 1) / gridSize;
+                v1 = (float)(y + 1) / gridSize;
+                return new Vector2[] {
+                new Vector2(u0, v0), new Vector2(u0, v1), new Vector2(u1, v1), new Vector2(u1, v0)
+            };
+
+            case FaceDirection.Left:
+                u0 = (float)z / gridSize;
+                v0 = (float)y / gridSize;
+                u1 = (float)(z + 1) / gridSize;
+                v1 = (float)(y + 1) / gridSize;
+                return new Vector2[] {
+                new Vector2(u0, v0), new Vector2(u1, v0), new Vector2(u1, v1), new Vector2(u0, v1)
+            };
+
+            default:
+                return new Vector2[] {
+                Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero
+            };
+        }
+    }
+
+    Vector2[] CalculateContinuousUV(int x, int y, int z, FaceDirection face)
+    {
+        // 原本的連續 UV 映射方法
+        float u0, v0, u1, v1;
+        
+        switch (face)
+        {
+            case FaceDirection.Up:
+            case FaceDirection.Down:
+                u0 = (float)x / gridSize;
+                v0 = (float)z / gridSize;
+                u1 = (float)(x + 1) / gridSize;
+                v1 = (float)(z + 1) / gridSize;
+                break;
+                
+            case FaceDirection.Forward:
+            case FaceDirection.Back:
+                u0 = (float)x / gridSize;
+                v0 = (float)y / gridSize;
+                u1 = (float)(x + 1) / gridSize;
+                v1 = (float)(y + 1) / gridSize;
+                break;
+                
+            case FaceDirection.Left:
+            case FaceDirection.Right:
+                u0 = (float)z / gridSize;
+                v0 = (float)y / gridSize;
+                u1 = (float)(z + 1) / gridSize;
+                v1 = (float)(y + 1) / gridSize;
+                break;
+                
+            default:
+                u0 = v0 = 0;
+                u1 = v1 = 1;
+                break;
+        }
+
+        return new Vector2[]
+        {
+            new Vector2(u0, v0),
+            new Vector2(u1, v0),
+            new Vector2(u1, v1),
+            new Vector2(u0, v1)
+        };
+    }
+
+    // 提供方法讓 PaintManager 知道使用的是哪種 UV 模式
+    public UVMode GetUVMode()
+    {
+        return uvMode;
+    }
+
+    // 提供方法讓 PaintManager 可以根據法線判斷是哪個面
+    public FaceDirection GetFaceDirection(Vector3 normal)
+    {
+        Vector3 absNormal = new Vector3(Mathf.Abs(normal.x), Mathf.Abs(normal.y), Mathf.Abs(normal.z));
+        
+        if (absNormal.y > absNormal.x && absNormal.y > absNormal.z)
+        {
+            return normal.y > 0 ? FaceDirection.Up : FaceDirection.Down;
+        }
+        else if (absNormal.x > absNormal.y && absNormal.x > absNormal.z)
+        {
+            return normal.x > 0 ? FaceDirection.Right : FaceDirection.Left;
+        }
+        else
+        {
+            return normal.z > 0 ? FaceDirection.Forward : FaceDirection.Back;
+        }
     }
 
     void OnDrawGizmos()
@@ -588,7 +869,6 @@ public class CubeCarvingSystem : MonoBehaviour
         {
             ModelData currentData = GetCurrentModelData();
             modelStat.SetModelData(currentData);
-
         }
     }
 }
