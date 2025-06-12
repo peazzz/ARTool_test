@@ -23,6 +23,7 @@ public class UIManager : MonoBehaviour
     public GameObject DrawPanel1;
     public GameObject DrawPanel2;
     public GameObject BrushPanel;
+    public GameObject BrushPanel2D;
     
 
     [Header("SculptPanel2Content")]
@@ -40,12 +41,16 @@ public class UIManager : MonoBehaviour
 
     [Header("BrushPanel")]
     public GameObject BasicEditPage;
+    public GameObject BasicEditPage2D;
     public GameObject ColorPage2;
+    public GameObject ColorPage3;
     public GameObject ColorPageButtonForDraw;
+    public GameObject ColorPageButtonForDraw2D;
 
     [Header("Function")]
     public SculptFunction sculptFunction;
     public DrawFunction drawFunction;
+    public Canvas2DManager canvas2DManager;
 
     [Header("Component")]
     public LightshipNavMeshRenderer lightshipNavMeshRenderer;
@@ -80,6 +85,11 @@ public class UIManager : MonoBehaviour
         {
             ColorPageButtonForDraw.GetComponent<Image>().color = drawFunction.fcp.color;
         }
+
+        if (ColorPage3 != null && ColorPage3.activeInHierarchy)
+        {
+            ColorPageButtonForDraw2D.GetComponent<Image>().color = drawFunction.fcp.color;
+        }
     }
 
     void InitializeUI()
@@ -102,6 +112,7 @@ public class UIManager : MonoBehaviour
         OtherPageButton?.onClick.AddListener(() => OtherPageSelect());
         ColorPageButtonForSculpt.GetComponent<Button>().onClick.AddListener(() => ColorPageSelectForSculpt());
         ColorPageButtonForDraw.GetComponent<Button>().onClick.AddListener(() => ColorPageSelectForDraw());
+        ColorPageButtonForDraw2D.GetComponent<Button>().onClick.AddListener(() => ColorPageSelectForDraw2D());
         GroundCheck.GetComponent<Button>().onClick.AddListener(() => GroundCheckFunction());
         ClearModeButton.GetComponent<Button>().onClick.AddListener(() => ClearModeSwitch());
     }
@@ -209,6 +220,13 @@ public class UIManager : MonoBehaviour
         BasicEditPage.SetActive(false);
     }
 
+    public void ColorPageSelectForDraw2D()
+    {
+        isInColorPage = true;
+        ColorPage3.SetActive(true);
+        BasicEditPage2D.SetActive(false);
+    }
+
     void GroundCheckFunction()
     {
         isGroundChecking = !isGroundChecking;
@@ -255,6 +273,7 @@ public class UIManager : MonoBehaviour
             {
                 if (isInColorPage)
                 {
+                    ColorPageButtonForSculpt.GetComponent<Image>().color = sculptFunction.fcp.color;
                     BackToPanel2();
                 }
                 else
@@ -298,6 +317,7 @@ public class UIManager : MonoBehaviour
             {
                 if (isInColorPage)
                 {
+                    ColorPageButtonForDraw.GetComponent<Image>().color = drawFunction.fcp.color;
                     BasicEditPage.SetActive(true);
                     ColorPage2.SetActive(false);
                     isInColorPage = false;
@@ -315,6 +335,14 @@ public class UIManager : MonoBehaviour
                         drawFunction.tempLineRenderer = null;
                     }
                 }
+            }
+            else if (canvas2DManager.Canvas2D.activeSelf)
+            {
+                drawFunction.Warning.SetActive(true);
+                drawFunction.WarningText_2DPaint.SetActive(true);
+                drawFunction.LeaveButton.SetActive(true);
+                drawFunction.CancelButton.SetActive(true);
+                FounctionUI.SetActive(true);
             }
         }
     }
@@ -350,6 +378,7 @@ public class UIManager : MonoBehaviour
         SetPanelActive(DrawPanel1, targetPanel == DrawPanel1);
         SetPanelActive(DrawPanel2, targetPanel == DrawPanel2);
         SetPanelActive(BrushPanel, targetPanel == BrushPanel);
+        SetPanelActive(BrushPanel2D, targetPanel == BrushPanel2D);
     }
 
     private void SetPanelActive(GameObject panel, bool active)

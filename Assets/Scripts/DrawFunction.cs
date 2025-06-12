@@ -49,6 +49,11 @@ public class DrawFunction : MonoBehaviour
 
     [Header("UI Objects")]
     public GameObject Warning;
+    public GameObject WarningText_Texture;
+    public GameObject WarningText_2DPaint;
+    public GameObject OkButton;
+    public GameObject LeaveButton;
+    public GameObject CancelButton;
     public GameObject Distance;
 
     [Header("UI Buttons")]
@@ -137,6 +142,7 @@ public class DrawFunction : MonoBehaviour
             DrawPanel.SetActive(true);
             uiManager.SwitchToPanel(uiManager.BrushPanel);
             uiManager.SetUIVisibility(false);
+            uiManager.UI_on = false;
             LineBrushSelection();
             SpaceModeSelection();
         });
@@ -150,11 +156,10 @@ public class DrawFunction : MonoBehaviour
             if (canvas2DManager != null)
             {
                 canvas2DManager.Show2DCanvas();
-                canvas2DManager.SetBrushColor(LineMaterial.color);
-                canvas2DManager.SetBrushSize(lineWidth * 1000f);
             }
 
-            uiManager.SwitchToPanel(uiManager.BrushPanel);
+            uiManager.FounctionUI.SetActive(false);
+            //uiManager.SwitchToPanel(uiManager.BrushPanel2D);
         });
 
         LBrush.GetComponent<Button>().onClick.AddListener(() => LineBrushSelection());
@@ -316,13 +321,13 @@ public class DrawFunction : MonoBehaviour
 
         if (GetInputDown())
         {
-            // 先檢查是否點擊到其他UI元素
-            if (IsClickingOtherUI(currentPosition))
-            {
-                return; // 點擊到其他UI，不進行繪圖
-            }
+            // 移除或簡化UI檢測
+            // if (IsClickingOtherUI(currentPosition))
+            // {
+            //     return;
+            // }
 
-            // 再檢查是否在畫布範圍內
+            // 直接檢查是否在畫布範圍內
             if (IsPointerOnCanvas(currentPosition))
             {
                 isMouseDown = true;
@@ -342,7 +347,6 @@ public class DrawFunction : MonoBehaviour
             }
             else
             {
-                // 離開畫布範圍，停止繪圖
                 isMouseDown = false;
                 canvas2DManager.StopDrawing();
             }
@@ -811,6 +815,8 @@ public class DrawFunction : MonoBehaviour
         if (!firstWarning)
         {
             Warning.SetActive(true);
+            WarningText_Texture.SetActive(true);
+            OkButton.SetActive(true);
             firstWarning = true;
         }
 
@@ -1019,11 +1025,6 @@ public class DrawFunction : MonoBehaviour
         lineWidth = value;
         UpdateInputFields();
         ApplyWidthToCurrentLine();
-
-        if (canvas2DManager != null && in2DDraw)
-        {
-            canvas2DManager.SetBrushSize(value * 1000f);
-        }
     }
 
     public void OnScaleSliderChanged(float value)
@@ -1048,19 +1049,17 @@ public class DrawFunction : MonoBehaviour
     {
         string cleanValue = value.Replace("%", "").Trim();
 
-        if (float.TryParse(cleanValue, out float displayValue))
+        if (float.TryParse(cleanValue, out float percentageValue))
         {
-            displayValue = Mathf.Clamp(displayValue, 10f, 500f);
-            float actualValue = (displayValue / 100f) * 0.01f;
+            percentageValue = Mathf.Clamp(percentageValue, 10f, 1000f);
+
+            float actualValue = Mathf.Lerp(0.001f, 0.1f, (percentageValue - 10f) / 990f);
+
             lineWidth = actualValue;
+
             if (WidthSlider != null)
                 WidthSlider.value = lineWidth;
             ApplyWidthToCurrentLine();
-
-            if (canvas2DManager != null && in2DDraw)
-            {
-                canvas2DManager.SetBrushSize(lineWidth * 1000f);
-            }
         }
         UpdateInputFields();
     }
@@ -1069,11 +1068,14 @@ public class DrawFunction : MonoBehaviour
     {
         string cleanValue = value.Replace("%", "").Trim();
 
-        if (float.TryParse(cleanValue, out float displayValue))
+        if (float.TryParse(cleanValue, out float percentageValue))
         {
-            displayValue = Mathf.Clamp(displayValue, 10f, 500f);
-            float actualValue = (displayValue / 100f) * 0.01f;
+            percentageValue = Mathf.Clamp(percentageValue, 10f, 1000f);
+
+            float actualValue = Mathf.Lerp(0.001f, 0.1f, (percentageValue - 10f) / 990f);
+
             ParticleScale = actualValue;
+
             if (ScaleSlider != null)
                 ScaleSlider.value = ParticleScale;
         }
@@ -1108,14 +1110,18 @@ public class DrawFunction : MonoBehaviour
     {
         if (WidthInputField != null)
         {
-            float displayWidth = (lineWidth / 0.01f) * 100f;
-            WidthInputField.text = displayWidth.ToString("F0");
+            // 將實際值 (0.001f ~ 0.1f) 轉換為百分比顯示 (10% ~ 1000%)
+            float normalizedValue = Mathf.InverseLerp(0.001f, 0.1f, lineWidth);
+            float displayWidth = Mathf.Lerp(10f, 1000f, normalizedValue);
+            WidthInputField.text = displayWidth.ToString("F0") + "%";
         }
 
         if (ScaleInputField != null)
         {
-            float displayScale = (ParticleScale / 0.01f) * 100f;
-            ScaleInputField.text = displayScale.ToString("F0");
+            // 將實際值 (0.001f ~ 0.1f) 轉換為百分比顯示 (10% ~ 1000%)
+            float normalizedValue = Mathf.InverseLerp(0.001f, 0.1f, ParticleScale);
+            float displayScale = Mathf.Lerp(10f, 1000f, normalizedValue);
+            ScaleInputField.text = displayScale.ToString("F0") + "%";
         }
 
         if (DistanceInputField != null)
@@ -1139,11 +1145,6 @@ public class DrawFunction : MonoBehaviour
     private void OnChangeColor(Color co)
     {
         LineMaterial.color = co;
-
-        if (canvas2DManager != null && in2DDraw)
-        {
-            canvas2DManager.SetBrushColor(co);
-        }
     }
 
     public void StartDrawLine()
@@ -1339,11 +1340,6 @@ public class DrawFunction : MonoBehaviour
         {
             pm.ClearPaint();
         }
-
-        if (canvas2DManager != null && in2DDraw)
-        {
-            canvas2DManager.ClearCanvas();
-        }
     }
 
     void OnResetButtonClicked()
@@ -1423,11 +1419,6 @@ public class DrawFunction : MonoBehaviour
         lastHitObject = null;
 
         SpaceModeSelection();
-
-        if (canvas2DManager != null)
-        {
-            canvas2DManager.Hide2DCanvas();
-        }
     }
 
     void ResetAllDrawingStates()
