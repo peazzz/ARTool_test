@@ -1,422 +1,187 @@
+using System.Collections;
 using UnityEngine;
-using System.Collections.Generic;
 
 public class PaintManager : MonoBehaviour
 {
-    [Header("Paint Settings")]
-    public Color paintColor = Color.white;
+    public Color paintColor = Color.red;
     public float brushSize = 0.05f;
-    public int textureSize = 512;
-
-    [Header("Debug")]
-    public bool showDebugInfo = false;
-    public bool createTestPattern = false;
+    public int textureSize = 1024;
 
     private Texture2D paintTexture;
-    private Material materialInstance;
+    private bool hasPaintData = false;
     private CubeCarvingSystem carvingSystem;
-    private Renderer targetRenderer;
+    private MeshRenderer meshRenderer;
+    private bool needsTextureUpdate = false;
 
-    private List<Texture2D> paintHistory = new List<Texture2D>();
-    private int maxHistoryCount = 10;
-    private float brushSoftness = 0.1f;
-
-    void Start()
+    void Awake()
     {
-        InitializePaintSystem();
-    }
-
-    void InitializePaintSystem()
-    {
-        targetRenderer = GetComponent<Renderer>();
         carvingSystem = GetComponent<CubeCarvingSystem>();
-
-        if (targetRenderer == null || carvingSystem == null)
-        {
-            Debug.LogError("PaintManager needs Renderer and CubeCarvingSystem components!");
-            return;
-        }
-
-        CreatePaintTexture();
-        CreateMaterialInstance();
+        meshRenderer = GetComponent<MeshRenderer>();
+        if (!meshRenderer) meshRenderer = gameObject.AddComponent<MeshRenderer>();
+        InitializePaintTexture();
     }
 
-    void CreatePaintTexture()
+    void Update()
+    {
+        if (needsTextureUpdate)
+        {
+            UpdatePaintTexture();
+            needsTextureUpdate = false;
+        }
+    }
+
+    void InitializePaintTexture()
     {
         paintTexture = new Texture2D(textureSize, textureSize, TextureFormat.RGBA32, false);
-
-        if (carvingSystem.GetUVMode() == UVMode.UnwrappedFaces)
-        {
-            InitializeUnwrappedTexture();
-        }
-        else
-        {
-            InitializeContinuousTexture();
-        }
-
-        if (createTestPattern)
-        {
-            CreateTestPattern();
-        }
-
+        Color[] clearPixels = new Color[textureSize * textureSize];
+        for (int i = 0; i < clearPixels.Length; i++)
+            clearPixels[i] = Color.clear;
+        paintTexture.SetPixels(clearPixels);
         paintTexture.Apply();
-    }
-
-    void InitializeUnwrappedTexture()
-    {
-        Color[] pixels = new Color[textureSize * textureSize];
-
-        for (int i = 0; i < pixels.Length; i++)
-        {
-            pixels[i] = Color.clear;
-        }
-
-        paintTexture.SetPixels(pixels);
-    }
-
-    void InitializeContinuousTexture()
-    {
-        Color[] pixels = new Color[textureSize * textureSize];
-
-        for (int i = 0; i < pixels.Length; i++)
-        {
-            pixels[i] = Color.clear;
-        }
-
-        paintTexture.SetPixels(pixels);
-    }
-
-    void CreateMaterialInstance()
-    {
-        if (targetRenderer.material != null)
-        {
-            materialInstance = new Material(targetRenderer.material);
-            materialInstance.SetTexture("_PaintTexture", paintTexture);
-            materialInstance.SetFloat("_PaintOpacity", 1.0f);
-            targetRenderer.material = materialInstance;
-        }
-    }
-
-    void CreateTestPattern()
-    {
-        if (carvingSystem.GetUVMode() != UVMode.UnwrappedFaces) return;
-
-        Color[] testColors = new Color[]
-        {
-            Color.red,
-            Color.green,
-            Color.blue,
-            Color.yellow,
-            Color.cyan,
-            Color.magenta
-        };
-
-        string[] faceNames = { "Up", "Down", "Forward", "Back", "Left", "Right" };
-
-        for (int faceIndex = 0; faceIndex < 6; faceIndex++)
-        {
-            Vector2 regionOffset;
-            Vector2 regionSize = new Vector2(1f / 3f, 1f / 2f);
-
-            switch (faceIndex)
-            {
-                case 0: regionOffset = new Vector2(0f, 0f); break;
-                case 1: regionOffset = new Vector2(1f / 3f, 0f); break;
-                case 2: regionOffset = new Vector2(2f / 3f, 0f); break;
-                case 3: regionOffset = new Vector2(0f, 1f / 2f); break;
-                case 4: regionOffset = new Vector2(1f / 3f, 1f / 2f); break;
-                case 5: regionOffset = new Vector2(2f / 3f, 1f / 2f); break;
-                default: regionOffset = Vector2.zero; break;
-            }
-
-            int startX = Mathf.RoundToInt(regionOffset.x * textureSize);
-            int startY = Mathf.RoundToInt(regionOffset.y * textureSize);
-            int endX = Mathf.RoundToInt((regionOffset.x + regionSize.x) * textureSize);
-            int endY = Mathf.RoundToInt((regionOffset.y + regionSize.y) * textureSize);
-
-            for (int y = startY; y < endY && y < textureSize; y++)
-            {
-                for (int x = startX; x < endX && x < textureSize; x++)
-                {
-                    float localU = (float)(x - startX) / (endX - startX);
-                    float localV = (float)(y - startY) / (endY - startY);
-
-                    Color pixelColor = testColors[faceIndex];
-
-                    if (Mathf.Abs(localU - 0.5f) < 0.02f || Mathf.Abs(localV - 0.5f) < 0.02f)
-                    {
-                        pixelColor = Color.white;
-                    }
-
-                    if (localU < 0.05f || localU > 0.95f || localV < 0.05f || localV > 0.95f)
-                    {
-                        pixelColor = Color.black;
-                    }
-
-                    pixelColor.a = 0.7f;
-                    paintTexture.SetPixel(x, y, pixelColor);
-                }
-            }
-        }
-
-        if (showDebugInfo)
-        {
-            Debug.Log("Test pattern created for UV debugging");
-        }
+        paintTexture.filterMode = FilterMode.Bilinear;
+        paintTexture.wrapMode = TextureWrapMode.Clamp;
     }
 
     public void PaintAt(Vector3 worldPosition, Vector3 normal)
     {
-        if (paintTexture == null || carvingSystem == null)
-            return;
-
-        Vector3 localPosition = transform.InverseTransformPoint(worldPosition);
-        Vector3 localNormal = transform.InverseTransformDirection(normal);
-
-        FaceDirection face = GetFaceDirectionFromLocalNormal(localNormal);
-
-        Vector2 uv = CalculateUVFromLocalPosition(localPosition, face, localNormal);
-
-        if (showDebugInfo)
+        Vector2 uv = WorldToUV(worldPosition, normal);
+        if (uv.x >= 0 && uv.x <= 1 && uv.y >= 0 && uv.y <= 1)
         {
-            Debug.Log($"Paint at World: {worldPosition}, Local: {localPosition}, Face: {face}, UV: {uv}, LocalNormal: {localNormal}");
+            PaintAtUV(uv);
+            hasPaintData = true;
         }
-
-        PaintAtUV(uv, face);
     }
 
-    FaceDirection GetFaceDirectionFromLocalNormal(Vector3 localNormal)
+    Vector2 WorldToUV(Vector3 worldPosition, Vector3 normal)
     {
-        Vector3 absNormal = new Vector3(Mathf.Abs(localNormal.x), Mathf.Abs(localNormal.y), Mathf.Abs(localNormal.z));
-
-        if (absNormal.y > absNormal.x && absNormal.y > absNormal.z)
-        {
-            return localNormal.y > 0 ? FaceDirection.Up : FaceDirection.Down;
-        }
-        else if (absNormal.x > absNormal.y && absNormal.x > absNormal.z)
-        {
-            return localNormal.x > 0 ? FaceDirection.Right : FaceDirection.Left;
-        }
-        else
-        {
-            return localNormal.z > 0 ? FaceDirection.Forward : FaceDirection.Back;
-        }
+        if (!carvingSystem) return Vector2.zero;
+        Vector3 localPosition = transform.InverseTransformPoint(worldPosition);
+        return CalculateUnwrappedUV(localPosition, normal);
     }
 
-    Vector2 CalculateUVFromLocalPosition(Vector3 localPos, FaceDirection face, Vector3 localNormal)
+    Vector2 CalculateUnwrappedUV(Vector3 localPos, Vector3 normal)
     {
         float cubeSize = carvingSystem.GetCubeSize();
-        float halfSize = cubeSize * 0.5f;
+        Vector3 normalizedPos = (localPos + Vector3.one * cubeSize * 0.5f) / cubeSize;
+        FaceDirection face = carvingSystem.GetFaceDirection(normal);
 
-        Vector3 normalizedPos = (localPos + Vector3.one * halfSize) / cubeSize;
-
-        Vector2 faceUV = Vector2.zero;
-
-        switch (face)
-        {
-            case FaceDirection.Up:
-            case FaceDirection.Down:
-                faceUV = new Vector2(normalizedPos.x, normalizedPos.z);
-                break;
-
-            case FaceDirection.Forward:
-            case FaceDirection.Back:
-                faceUV = new Vector2(normalizedPos.x, normalizedPos.y);
-                break;
-
-            case FaceDirection.Right:
-            case FaceDirection.Left:
-                faceUV = new Vector2(normalizedPos.z, normalizedPos.y);
-                break;
-        }
-
-        faceUV.x = Mathf.Clamp01(faceUV.x);
-        faceUV.y = Mathf.Clamp01(faceUV.y);
-
-        if (carvingSystem.GetUVMode() == UVMode.UnwrappedFaces)
-        {
-            return MapFaceUVToUnwrappedUV(faceUV, face);
-        }
-        else
-        {
-            return faceUV;
-        }
-    }
-
-    Vector2 MapFaceUVToUnwrappedUV(Vector2 faceUV, FaceDirection face)
-    {
-        Vector2 regionOffset = Vector2.zero;
-        Vector2 regionSize = new Vector2(1f / 3f, 1f / 2f);
+        Vector2 baseUV = Vector2.zero;
+        Vector2 offset = Vector2.zero;
+        Vector2 scale = new Vector2(1f / 3f, 1f / 2f);
 
         switch (face)
         {
             case FaceDirection.Up:
-                regionOffset = new Vector2(0f, 0f);
+                baseUV = new Vector2(normalizedPos.x, normalizedPos.z);
+                offset = new Vector2(0f, 0f);
                 break;
             case FaceDirection.Down:
-                regionOffset = new Vector2(1f / 3f, 0f);
+                baseUV = new Vector2(normalizedPos.x, normalizedPos.z);
+                offset = new Vector2(1f / 3f, 0f);
                 break;
             case FaceDirection.Forward:
-                regionOffset = new Vector2(2f / 3f, 0f);
+                baseUV = new Vector2(normalizedPos.x, normalizedPos.y);
+                offset = new Vector2(2f / 3f, 0f);
                 break;
             case FaceDirection.Back:
-                regionOffset = new Vector2(0f, 1f / 2f);
+                baseUV = new Vector2(normalizedPos.x, normalizedPos.y);
+                offset = new Vector2(0f, 1f / 2f);
                 break;
             case FaceDirection.Left:
-                regionOffset = new Vector2(1f / 3f, 1f / 2f);
+                baseUV = new Vector2(normalizedPos.z, normalizedPos.y);
+                offset = new Vector2(1f / 3f, 1f / 2f);
                 break;
             case FaceDirection.Right:
-                regionOffset = new Vector2(2f / 3f, 1f / 2f);
+                baseUV = new Vector2(normalizedPos.z, normalizedPos.y);
+                offset = new Vector2(2f / 3f, 1f / 2f);
                 break;
         }
 
-        Vector2 mappedUV = regionOffset + Vector2.Scale(faceUV, regionSize);
-
-        mappedUV.x = Mathf.Clamp01(mappedUV.x);
-        mappedUV.y = Mathf.Clamp01(mappedUV.y);
-
-        return mappedUV;
+        return offset + Vector2.Scale(baseUV, scale);
     }
 
-    void PaintAtUV(Vector2 uv, FaceDirection face)
+    void PaintAtUV(Vector2 uv)
     {
-        SavePaintState();
+        int x = Mathf.RoundToInt(uv.x * (textureSize - 1));
+        int y = Mathf.RoundToInt(uv.y * (textureSize - 1));
+        int brushRadius = Mathf.Max(Mathf.RoundToInt(brushSize * textureSize * 0.5f), 1);
+        Color[] pixels = paintTexture.GetPixels();
 
-        int pixelX = Mathf.RoundToInt(uv.x * (textureSize - 1));
-        int pixelY = Mathf.RoundToInt(uv.y * (textureSize - 1));
-
-        int brushRadius = Mathf.RoundToInt(brushSize * textureSize * 0.5f);
-        brushRadius = Mathf.Max(1, brushRadius);
-
-        for (int y = -brushRadius; y <= brushRadius; y++)
+        for (int py = -brushRadius; py <= brushRadius; py++)
         {
-            for (int x = -brushRadius; x <= brushRadius; x++)
+            for (int px = -brushRadius; px <= brushRadius; px++)
             {
-                int targetX = pixelX + x;
-                int targetY = pixelY + y;
+                int pixelX = x + px;
+                int pixelY = y + py;
 
-                if (targetX >= 0 && targetX < textureSize &&
-                    targetY >= 0 && targetY < textureSize)
+                if (pixelX >= 0 && pixelX < textureSize && pixelY >= 0 && pixelY < textureSize)
                 {
-                    float distance = Mathf.Sqrt(x * x + y * y);
-
+                    float distance = Mathf.Sqrt(px * px + py * py);
                     if (distance <= brushRadius)
                     {
-                        float strength = CalculateBrushStrength(distance, brushRadius);
-
-                        Color currentColor = paintTexture.GetPixel(targetX, targetY);
-
-                        Color blendedColor = Color.Lerp(currentColor, paintColor, strength * paintColor.a);
-                        blendedColor.a = Mathf.Max(currentColor.a, strength * paintColor.a);
-
-                        paintTexture.SetPixel(targetX, targetY, blendedColor);
+                        int pixelIndex = pixelY * textureSize + pixelX;
+                        pixels[pixelIndex] = paintColor;
                     }
                 }
             }
         }
 
-        paintTexture.Apply();
+        paintTexture.SetPixels(pixels);
+        needsTextureUpdate = true;
     }
 
-    float CalculateBrushStrength(float distance, float brushRadius)
+    void UpdatePaintTexture()
     {
-        if (brushRadius <= 0) return 1f;
-
-        float normalizedDistance = distance / brushRadius;
-
-        float falloffStart = 1f - brushSoftness;
-
-        if (normalizedDistance <= falloffStart)
+        if (paintTexture)
         {
-            return 1f;
-        }
-        else if (normalizedDistance <= 1f)
-        {
-            float falloffRange = brushSoftness;
-            float falloffPosition = (normalizedDistance - falloffStart) / falloffRange;
-            return 1f - Mathf.SmoothStep(0f, 1f, falloffPosition);
-        }
-        else
-        {
-            return 0f;
-        }
-    }
-
-    void SavePaintState()
-    {
-        Texture2D snapshot = new Texture2D(textureSize, textureSize, TextureFormat.RGBA32, false);
-        snapshot.SetPixels(paintTexture.GetPixels());
-        snapshot.Apply();
-
-        paintHistory.Add(snapshot);
-
-        if (paintHistory.Count > maxHistoryCount)
-        {
-            if (paintHistory[0] != null)
-                DestroyImmediate(paintHistory[0]);
-            paintHistory.RemoveAt(0);
-        }
-    }
-
-    public void Undo()
-    {
-        if (paintHistory.Count > 0)
-        {
-            Texture2D lastState = paintHistory[paintHistory.Count - 1];
-            paintTexture.SetPixels(lastState.GetPixels());
             paintTexture.Apply();
+            if (meshRenderer?.material)
+            {
+                Material mat = meshRenderer.material;
 
-            if (lastState != null)
-                DestroyImmediate(lastState);
-            paintHistory.RemoveAt(paintHistory.Count - 1);
+                // 設置繪圖紋理
+                if (mat.HasProperty("_PaintTexture"))
+                    mat.SetTexture("_PaintTexture", paintTexture);
+                if (mat.HasProperty("_PaintOpacity"))
+                    mat.SetFloat("_PaintOpacity", 1.0f);
+
+                // 移除這些行，不要覆蓋材質的基礎顏色
+                // mat.color = paintColor;
+                // if (mat.HasProperty("_Color"))
+                //     mat.SetColor("_Color", paintColor);
+            }
         }
     }
+
+    public bool HasPaintData() => hasPaintData;
 
     public void ClearPaint()
     {
-        if (paintTexture != null)
+        if (paintTexture)
         {
             Color[] clearPixels = new Color[textureSize * textureSize];
             for (int i = 0; i < clearPixels.Length; i++)
-            {
                 clearPixels[i] = Color.clear;
-            }
             paintTexture.SetPixels(clearPixels);
             paintTexture.Apply();
+            hasPaintData = false;
+            if (meshRenderer?.material?.HasProperty("_PaintTexture") == true)
+                meshRenderer.material.SetTexture("_PaintTexture", paintTexture);
         }
+    }
 
-        foreach (Texture2D texture in paintHistory)
-        {
-            if (texture != null)
-                DestroyImmediate(texture);
-        }
-        paintHistory.Clear();
+    public void SetBrushSize(float size) => brushSize = Mathf.Clamp(size, 0.001f, 0.5f);
+    public void SetPaintColor(Color color) => paintColor = color;
+    public Texture2D GetPaintTexture() => paintTexture;
+
+    public void SetTextureSize(int size)
+    {
+        textureSize = Mathf.ClosestPowerOfTwo(Mathf.Clamp(size, 256, 2048));
+        InitializePaintTexture();
     }
 
     void OnDestroy()
     {
-        if (paintTexture != null)
-        {
-            DestroyImmediate(paintTexture);
-        }
-
-        if (materialInstance != null)
-        {
-            DestroyImmediate(materialInstance);
-        }
-
-        foreach (Texture2D texture in paintHistory)
-        {
-            if (texture != null)
-                DestroyImmediate(texture);
-        }
-        paintHistory.Clear();
-    }
-
-    void OnDrawGizmos()
-    {
-        if (Application.isPlaying && paintTexture != null)
-        {
-        }
+        if (paintTexture) DestroyImmediate(paintTexture);
     }
 }

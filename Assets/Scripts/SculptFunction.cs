@@ -5,67 +5,50 @@ using UnityEngine.UI;
 
 public class SculptFunction : MonoBehaviour
 {
-    [Header("BasicSetting")]
-    //public GameObject ClearButton;
+    public Button TestButton;
+    public Texture2D TestTexture;
+
     public GameObject cubeCarvingSystemPrefab;
-    public Material previewMaterial, finalMaterial;
     public Transform parentObject;
     public Camera targetCamera;
     public UIManager uiManager;
-
-    [Header("NavMeshSetting")]
     [SerializeField] private float baseForwardDistance = 1.5f;
     [SerializeField] private float downwardCheckDistance = 10f;
     [SerializeField] private float defaultHeightOffset = 0.5f;
-
-    [Header("SculptTool")]
-    public GameObject CuttingTool;
-
-    public GameObject CutButton;
+    public GameObject CuttingTool, PreviewCuttingArea, CutButton;
     public Slider CuttingTool_A;
-    public GameObject Aim;
-
-    [Header("ShapeButton")]
+    private bool AreaSwitch = false;
     public Button ShapeButton_Cube, ShapeButton_Sphere, ShapeButton_Capsule, ShapeButton_Cylinder;
-
-    [Header("MainControlUI")]
     public Slider MainScaleSlider, HeightSlider;
     public Text MainScaleValue, HeightValue;
     public GameObject PositionLockButton;
-
     public Slider ScaleXSlider, ScaleYSlider, ScaleZSlider;
     public InputField ScaleXInputField, ScaleYInputField, ScaleZInputField;
-
     public Slider RotationXSlider, RotationYSlider, RotationZSlider;
     public InputField RotationXInputField, RotationYInputField, RotationZInputField;
-
     public InputField GridInputField;
     public Button GenerateButton, ResetButton;
     public FlexibleColorPicker fcp;
-    public Material ModelMaterial;
-
-    [Header("defaultValue")]
+    public Material ColorMaterial;
+    public Material TextureMaterial;
     public float defaultCubeSize = 1f;
     public int defaultGridSize = 10;
-
-    [Header("RotationSetting")]
     [SerializeField] private float rotationSpeed = 0.5f;
     [SerializeField] private bool allowRotationControl = true;
-
-    [Header("Debug")]
     [SerializeField] private float raycastCacheTime = 0.15f;
-
-    [Header("CuttingTool Control")]
-    [SerializeField] private float cutMoveSpeed = 0.4f; // 每秒移動速度
-    [SerializeField] private float cutReturnSpeed = 1f; // 回復速度
-    [SerializeField] private float maxCutDistance = 4f; // 最大移動距離
-    [SerializeField] private float minCutDistance = 0f; // 最小移動距離
-
+    [SerializeField] private float cutMoveSpeed = 0.4f;
+    [SerializeField] private float cutReturnSpeed = 1f;
+    [SerializeField] private float maxCutDistance = 4f;
+    [SerializeField] private float minCutDistance = 0f;
+    [SerializeField] private float distanceDetectionInterval = 0.2f;
+    [SerializeField] private float maxDetectionDistance = 10f;
+    private float lastDistanceDetectionTime = 0f;
+    private float detectedDistance = 0f;
+    private bool hasDetectedObject = false;
     private bool isCutButtonPressed = false;
     private float currentCutDistance = 0f;
     private Vector3 cuttingToolOriginalPosition;
     private bool cuttingToolInitialized = false;
-
     private VoxelShape selectedShape;
     private GameObject previewModel, finalModel;
     private GameObject currentSelectedObject;
@@ -87,115 +70,126 @@ public class SculptFunction : MonoBehaviour
     private Vector3 lockedPosition;
     private int originalLayer;
     private bool useTool;
-
     private Vector3 originalObjectScale;
     private Vector3 originalObjectRotation;
     private Vector3 originalObjectPosition;
+    private List<CubeCarvingSystem> allCarvingSystems = new List<CubeCarvingSystem>();
 
     void Start()
     {
-        if (targetCamera == null) targetCamera = Camera.main;
+        targetCamera = targetCamera ?? Camera.main;
         SetupAllButtonEvents();
         SetupSliderAndInputEvents();
         dynamicForwardDistance = baseForwardDistance;
-
-        if (fcp != null && ModelMaterial != null)
+        if (fcp && ColorMaterial)
         {
-            fcp.color = ModelMaterial.color;
+            fcp.color = ColorMaterial.color;
             fcp.onColorChange.AddListener(OnChangeColor);
         }
-
-        if (CuttingTool != null)
+        if (CuttingTool)
         {
             cuttingToolOriginalPosition = CuttingTool.transform.localPosition;
             cuttingToolInitialized = true;
         }
-
-        //ClearButton.SetActive(false);
+        lastDistanceDetectionTime = Time.time;
+        RefreshCarvingSystems();
     }
 
     void Update()
     {
-        if (!isEditingExistingObject && Input.GetMouseButtonDown(0) &&
-        !IsPointerOverUIElement() &&
-        uiManager.UIHome != null && uiManager.UIHome.activeInHierarchy)
-        {
+        if (!isEditingExistingObject && Input.GetMouseButtonDown(0) && !IsPointerOverUIElement() && uiManager.UIHome && uiManager.UIHome.activeInHierarchy)
             CheckForObjectSelection();
-        }
-
-        if ((previewModel != null || (isEditingExistingObject && currentSelectedObject != null)) &&
-            Time.time - lastUpdateTime > updateInterval)
+        if ((previewModel || (isEditingExistingObject && currentSelectedObject)) && Time.time - lastUpdateTime > updateInterval)
         {
             lastUpdateTime = Time.time;
             UpdatePreviewModelPosition();
         }
-
-        if ((previewModel != null || isEditingExistingObject) && allowRotationControl &&
-            uiManager.SculptPanel2 != null && uiManager.SculptPanel2.activeInHierarchy)
-        {
+        if ((previewModel || isEditingExistingObject) && allowRotationControl && uiManager.SculptPanel2 && uiManager.SculptPanel2.activeInHierarchy)
             HandleRotationInput();
+        if (Time.time - lastDistanceDetectionTime >= distanceDetectionInterval)
+        {
+            DetectSculptObjectDistance();
+            lastDistanceDetectionTime = Time.time;
         }
-
         HandleCuttingToolMovement();
+        UpdateCarvingState();
+    }
+
+    private void UpdateCarvingState()
+    {
+        if (Time.frameCount % 60 == 0) RefreshCarvingSystems();
+        foreach (CubeCarvingSystem system in allCarvingSystems)
+            if (system) system.SetCarvingEnabled(isCutButtonPressed);
+    }
+
+    private void RefreshCarvingSystems()
+    {
+        allCarvingSystems.Clear();
+        allCarvingSystems.AddRange(FindObjectsOfType<CubeCarvingSystem>());
+    }
+
+    private void DetectSculptObjectDistance()
+    {
+        if (!targetCamera) return;
+        Ray ray = new Ray(targetCamera.transform.position, targetCamera.transform.forward);
+        int sculptObjectLayer = LayerMask.NameToLayer("SculptObject");
+        int layerMask = sculptObjectLayer == -1 ? ~0 : 1 << sculptObjectLayer;
+        if (Physics.Raycast(ray, out RaycastHit hit, maxDetectionDistance, layerMask))
+        {
+            if (sculptObjectLayer == -1 && !hit.collider.CompareTag("SculptObject"))
+            {
+                hasDetectedObject = false;
+                detectedDistance = 0f;
+                return;
+            }
+            hasDetectedObject = true;
+            detectedDistance = hit.distance;
+            if (AreaSwitch) PreviewCuttingArea.transform.localPosition = new Vector3(0, 0, detectedDistance);
+        }
+        else
+        {
+            hasDetectedObject = false;
+            detectedDistance = 0f;
+        }
     }
 
     private void HandleCuttingToolMovement()
     {
-        if (!cuttingToolInitialized || CuttingTool == null)
-            return;
-
+        if (!cuttingToolInitialized || !CuttingTool) return;
         if (isCutButtonPressed)
         {
-            // 按住按鈕時，Z軸逐漸增加
-            currentCutDistance += cutMoveSpeed * Time.deltaTime;
-            currentCutDistance = Mathf.Clamp(currentCutDistance, minCutDistance, maxCutDistance);
-            Aim.SetActive(true);
+            CuttingTool.SetActive(true);
+            CuttingTool.transform.localPosition = new Vector3(0, 0, detectedDistance);
+            if (CuttingTool_A)
+            {
+                Vector3 currentScale = Vector3.one * CuttingTool_A.value;
+                CuttingTool.transform.localScale = currentScale;
+            }
         }
         else
         {
-            // 放開按鈕時，Z軸逐漸減少
-            currentCutDistance -= cutReturnSpeed * Time.deltaTime;
-            currentCutDistance = Mathf.Clamp(currentCutDistance, minCutDistance, maxCutDistance);
-            Aim.SetActive(false);
+            CuttingTool.SetActive(false);
+            CuttingTool.transform.localPosition = new Vector3(0, 0, 0.5f);
+            CuttingTool.transform.localScale = Vector3.zero;
         }
-
-        // 更新 CuttingTool 位置
-        Vector3 newPosition = cuttingToolOriginalPosition;
-        newPosition.z += currentCutDistance;
-        CuttingTool.transform.localPosition = newPosition;
     }
 
-    #region Select&Edit
+    public void AreaSwitchFunction()
+    {
+        AreaSwitch = !AreaSwitch;
+        PreviewCuttingArea.SetActive(AreaSwitch);
+    }
+
     void CheckForObjectSelection()
     {
         Ray ray = targetCamera.ScreenPointToRay(Input.mousePosition);
-        RaycastHit hit;
-
-        int layerMask = (1 << LayerMask.NameToLayer("SculptObject")) |
-                    (1 << LayerMask.NameToLayer("PreviewObject"));
-
-        if (LayerMask.NameToLayer("SculptObject") == -1 ||
-        LayerMask.NameToLayer("PreviewObject") == -1)
-        {
-            layerMask = ~0;
-        }
-
-        float maxDistance = 100f;
-
-        if (Physics.Raycast(ray, out hit, maxDistance, layerMask))
+        int layerMask = (1 << LayerMask.NameToLayer("SculptObject")) | (1 << LayerMask.NameToLayer("PreviewObject"));
+        if (LayerMask.NameToLayer("SculptObject") == -1 || LayerMask.NameToLayer("PreviewObject") == -1) layerMask = ~0;
+        if (Physics.Raycast(ray, out RaycastHit hit, 100f, layerMask))
         {
             GameObject hitObject = hit.collider.gameObject;
-
-            CubeCarvingSystem carvingSystem = hitObject.GetComponent<CubeCarvingSystem>();
-            if (carvingSystem == null)
-            {
-                carvingSystem = hitObject.GetComponentInParent<CubeCarvingSystem>();
-            }
-
-            if (carvingSystem != null)
-            {
-                SelectObject(carvingSystem.gameObject);
-            }
+            CubeCarvingSystem carvingSystem = hitObject.GetComponent<CubeCarvingSystem>() ?? hitObject.GetComponentInParent<CubeCarvingSystem>();
+            if (carvingSystem) SelectObject(carvingSystem.gameObject);
         }
     }
 
@@ -210,16 +204,14 @@ public class SculptFunction : MonoBehaviour
         SetLayerRecursively(currentSelectedObject, LayerMask.NameToLayer("PreviewObject"));
         LoadParametersFromObject(currentSelectedObject);
         CalculateDynamicForwardDistanceForObject(currentSelectedObject);
-
         originalObjectScale = currentSelectedObject.transform.localScale;
         originalObjectRotation = currentSelectedObject.transform.eulerAngles;
         originalObjectPosition = currentSelectedObject.transform.position;
-
         LoadColorFromObject(currentSelectedObject);
-
         CubeCarvingSystem carvingSystem = currentSelectedObject.GetComponent<CubeCarvingSystem>();
-        if (carvingSystem != null)
+        if (carvingSystem)
         {
+            if (!allCarvingSystems.Contains(carvingSystem)) allCarvingSystems.Add(carvingSystem);
             string objectName = currentSelectedObject.name.ToLower();
             if (objectName.Contains("cube")) selectedShape = VoxelShape.Cube;
             else if (objectName.Contains("sphere")) selectedShape = VoxelShape.Sphere;
@@ -227,17 +219,13 @@ public class SculptFunction : MonoBehaviour
             else if (objectName.Contains("cylinder")) selectedShape = VoxelShape.Cylinder;
             else selectedShape = VoxelShape.Cube;
         }
-
         uiManager.SculptPanel1?.SetActive(false);
         uiManager.SculptPanel2?.SetActive(true);
         uiManager.UIHome?.SetActive(false);
         uiManager.BackButton?.SetActive(true);
-        //ClearButton.SetActive(true);
         GridInputField.interactable = false;
-
         UpdateAllUIValues();
         SetDefaultPositionLockState(true);
-
         ApplyColorToModel(currentSelectedObject, fcp.color);
     }
 
@@ -246,54 +234,41 @@ public class SculptFunction : MonoBehaviour
         PaintManager paintManager = obj.GetComponent<PaintManager>();
         ModelStat modelStat = obj.GetComponent<ModelStat>();
         Color objectColor = Color.white;
-
-        if (paintManager != null)
-        {
-            return;
-        }
-
-        if (modelStat != null && modelStat.IsModelDataValid())
-        {
-            objectColor = modelStat.ModelData.materialColor;
-        }
+        if (paintManager) return;
+        if (modelStat && modelStat.IsModelDataValid()) objectColor = modelStat.ModelData.materialColor;
         else
         {
             var renderer = obj.GetComponent<MeshRenderer>();
-            if (renderer != null && renderer.material != null)
-                objectColor = renderer.material.color;
+            if (renderer?.material) objectColor = renderer.material.color;
         }
-
         fcp.onColorChange.RemoveListener(OnChangeColor);
         fcp.color = objectColor;
         fcp.onColorChange.AddListener(OnChangeColor);
-        ModelMaterial.color = objectColor;
-
-        if (paintManager == null)
-        {
-            ApplyColorToModel(obj, objectColor);
-        }
+        ColorMaterial.color = objectColor;
+        if (!paintManager) ApplyColorToModel(obj, objectColor);
     }
 
     void DeselectCurrentObject()
     {
-        if (currentSelectedObject != null)
+        if (currentSelectedObject)
         {
             SetObjectGlow(currentSelectedObject, false);
             SetLayerRecursively(currentSelectedObject, originalLayer);
             currentSelectedObject = null;
         }
         isEditingExistingObject = false;
-        //ClearButton.SetActive(false);
         GridInputField.interactable = true;
     }
 
     public void SyncCurrentModelColorToUI()
     {
-        if (isEditingExistingObject && currentSelectedObject != null)
+        ColorMaterial.color = fcp.color;
+
+        if (isEditingExistingObject && currentSelectedObject)
         {
             ApplyColorToModel(currentSelectedObject, fcp.color);
         }
-        else if (previewModel != null)
+        else if (previewModel)
         {
             ApplyColorToModel(previewModel, fcp.color);
         }
@@ -302,82 +277,45 @@ public class SculptFunction : MonoBehaviour
     void SetObjectGlow(GameObject obj, bool glow)
     {
         MeshRenderer renderer = obj.GetComponent<MeshRenderer>();
-        if (renderer != null)
-        {
-            if (glow)
-            {
-                originalMaterial = renderer.material;
-            }
-        }
+        if (renderer && glow) originalMaterial = renderer.material;
     }
 
     void LoadParametersFromObject(GameObject obj)
     {
         Vector3 scale = obj.transform.localScale;
         mainScale = Mathf.Max(scale.x, scale.y, scale.z);
-
-        if (mainScale > 0)
-        {
-            individualScale = new Vector3(
-                scale.x / mainScale,
-                scale.y / mainScale,
-                scale.z / mainScale
-            );
-        }
-        else
-        {
-            individualScale = Vector3.one;
-            mainScale = 1f;
-        }
-
+        if (mainScale > 0) individualScale = new Vector3(scale.x / mainScale, scale.y / mainScale, scale.z / mainScale);
+        else { individualScale = Vector3.one; mainScale = 1f; }
         Vector3 eulerAngles = obj.transform.eulerAngles;
-        modelRotation = new Vector3(
-            NormalizeAngle(eulerAngles.x),
-            NormalizeAngle(eulerAngles.y),
-            NormalizeAngle(eulerAngles.z)
-        );
+        modelRotation = new Vector3(NormalizeAngle(eulerAngles.x), NormalizeAngle(eulerAngles.y), NormalizeAngle(eulerAngles.z));
         currentRotationY = modelRotation.y;
         gridSize = defaultGridSize;
         heightOffset = 0f;
-
         bool isCarved = IsObjectCarved(obj);
     }
-    #endregion
 
-    #region Event&Value
     void SetupAllButtonEvents()
     {
+        TestButton.onClick.AddListener(() => OnTextureLoaded(TestTexture));
+
         ShapeButton_Cube?.onClick.AddListener(() => OnShapeSelected(VoxelShape.Cube));
         ShapeButton_Sphere?.onClick.AddListener(() => OnShapeSelected(VoxelShape.Sphere));
         ShapeButton_Capsule?.onClick.AddListener(() => OnShapeSelected(VoxelShape.Capsule));
         ShapeButton_Cylinder?.onClick.AddListener(() => OnShapeSelected(VoxelShape.Cylinder));
-
         GenerateButton?.onClick.AddListener(OnGenerateButtonClicked);
         ResetButton?.onClick.AddListener(OnResetButtonClicked);
         PositionLockButton.GetComponent<Button>().onClick.AddListener(TogglePositionLock);
-
-        if (CutButton != null)
+        if (CutButton)
         {
-            // 使用 EventTrigger 來處理按下和放開事件
-            UnityEngine.EventSystems.EventTrigger trigger = CutButton.GetComponent<UnityEngine.EventSystems.EventTrigger>();
-            if (trigger == null)
-            {
-                trigger = CutButton.AddComponent<UnityEngine.EventSystems.EventTrigger>();
-            }
-
-            // 按下事件
+            UnityEngine.EventSystems.EventTrigger trigger = CutButton.GetComponent<UnityEngine.EventSystems.EventTrigger>() ?? CutButton.AddComponent<UnityEngine.EventSystems.EventTrigger>();
             UnityEngine.EventSystems.EventTrigger.Entry pointerDownEntry = new UnityEngine.EventSystems.EventTrigger.Entry();
             pointerDownEntry.eventID = UnityEngine.EventSystems.EventTriggerType.PointerDown;
             pointerDownEntry.callback.AddListener((data) => { OnCutButtonPressed(); });
             trigger.triggers.Add(pointerDownEntry);
-
-            // 放開事件
             UnityEngine.EventSystems.EventTrigger.Entry pointerUpEntry = new UnityEngine.EventSystems.EventTrigger.Entry();
             pointerUpEntry.eventID = UnityEngine.EventSystems.EventTriggerType.PointerUp;
             pointerUpEntry.callback.AddListener((data) => { OnCutButtonReleased(); });
             trigger.triggers.Add(pointerUpEntry);
-
-            // 離開事件（防止滑出按鈕後仍然按住的情況）
             UnityEngine.EventSystems.EventTrigger.Entry pointerExitEntry = new UnityEngine.EventSystems.EventTrigger.Entry();
             pointerExitEntry.eventID = UnityEngine.EventSystems.EventTriggerType.PointerExit;
             pointerExitEntry.callback.AddListener((data) => { OnCutButtonReleased(); });
@@ -389,181 +327,122 @@ public class SculptFunction : MonoBehaviour
     {
         SetupSlider(MainScaleSlider, 0.1f, 3f, 1f, OnMainScaleChanged);
         SetupSlider(HeightSlider, -1f, 1f, 0f, OnHeightChanged);
-
         SetupSlider(ScaleXSlider, 0.1f, 3f, 1f, OnScaleXSliderChanged);
         SetupSlider(ScaleYSlider, 0.1f, 3f, 1f, OnScaleYSliderChanged);
         SetupSlider(ScaleZSlider, 0.1f, 3f, 1f, OnScaleZSliderChanged);
-
         SetupSlider(RotationXSlider, 0f, 360f, 0f, OnRotationXSliderChanged);
         SetupSlider(RotationYSlider, 0f, 360f, 0f, OnRotationYSliderChanged);
         SetupSlider(RotationZSlider, 0f, 360f, 0f, OnRotationZSliderChanged);
-
-        if (CuttingTool_A != null)
+        if (CuttingTool_A)
         {
-            CuttingTool_A.minValue = 0f;
+            CuttingTool_A.minValue = 0.001f;
             CuttingTool_A.maxValue = 1f;
-            CuttingTool_A.value = 1f;
-            CuttingTool_A.onValueChanged.AddListener(OnCuttingToolAlphaChanged);
+            CuttingTool_A.value = 0.05f;
+            CuttingTool_A.onValueChanged.AddListener(OnCuttingHeadScaleChanged);
         }
-
         SetupInputField(ScaleXInputField, "1.00", OnScaleXInputChanged);
         SetupInputField(ScaleYInputField, "1.00", OnScaleYInputChanged);
         SetupInputField(ScaleZInputField, "1.00", OnScaleZInputChanged);
-
         SetupInputField(RotationXInputField, "0", OnRotationXInputChanged);
         SetupInputField(RotationYInputField, "0", OnRotationYInputChanged);
         SetupInputField(RotationZInputField, "0", OnRotationZInputChanged);
-
         SetupInputField(GridInputField, "10", OnGridInputChanged);
     }
 
-    private void OnCuttingToolAlphaChanged(float alphaValue)
+    private void OnCuttingHeadScaleChanged(float scaleValue)
     {
-        if (CuttingTool == null) return;
-
-        MeshRenderer renderer = CuttingTool.GetComponent<MeshRenderer>();
-        if (renderer != null && renderer.material != null)
+        if (!CuttingTool || !PreviewCuttingArea) return;
+        Vector3 newScale = Vector3.one * scaleValue;
+        PreviewCuttingArea.transform.localScale = newScale;
+        if (isCutButtonPressed) CuttingTool.transform.localScale = newScale;
+        else CuttingTool.transform.localScale = Vector3.zero;
+        CubeCarvingTool carvingTool = CuttingTool.GetComponent<CubeCarvingTool>();
+        if (carvingTool)
         {
-            Color currentColor = renderer.material.color;
-            currentColor.a = alphaValue;
-            renderer.material.color = currentColor;
+            Vector3 toolSize = Vector3.one * scaleValue * 0.2f;
+            carvingTool.SetToolSize(toolSize);
         }
     }
 
-    private void OnCutButtonPressed()
-    {
-        isCutButtonPressed = true;
-    }
-
-    // 新增方法：放開 CutButton
-    private void OnCutButtonReleased()
-    {
-        isCutButtonPressed = false;
-    }
+    private void OnCutButtonPressed() => isCutButtonPressed = true;
+    private void OnCutButtonReleased() => isCutButtonPressed = false;
 
     private void OnChangeColor(Color co)
     {
-        ModelMaterial.color = co;
+        // 更新ColorMaterial的顏色
+        ColorMaterial.color = co;
 
-        if (isEditingExistingObject && currentSelectedObject != null)
+        if (isEditingExistingObject && currentSelectedObject)
         {
-            PaintManager paintManager = currentSelectedObject.GetComponent<PaintManager>();
-            if (paintManager != null)
+            // 不要更新PaintManager的paintColor，那是繪圖顏色
+            // PaintManager paintManager = currentSelectedObject.GetComponent<PaintManager>();
+            // if (paintManager) paintManager.SetPaintColor(co);
+
+            // 只更新材質的基礎顏色
+            DualMaterialManager dualManager = currentSelectedObject.GetComponent<DualMaterialManager>();
+            if (dualManager)
             {
-                paintManager.paintColor = co;
-                return;
+                dualManager.SetColor(co);
+            }
+            else
+            {
+                ApplyColorToModel(currentSelectedObject, co);
             }
         }
-        else if (previewModel != null)
+        else if (previewModel)
         {
-            PaintManager paintManager = previewModel.GetComponent<PaintManager>();
-            if (paintManager != null)
+            // PaintManager paintManager = previewModel.GetComponent<PaintManager>();
+            // if (paintManager) paintManager.SetPaintColor(co);
+
+            DualMaterialManager dualManager = previewModel.GetComponent<DualMaterialManager>();
+            if (dualManager)
             {
-                paintManager.paintColor = co;
-                return;
+                dualManager.SetColor(co);
             }
-        }
-
-        ApplyColorToCurrentModel(co);
-    }
-
-    private IEnumerator SyncColorWithDelay()
-    {
-        yield return null;
-        
-        if (isEditingExistingObject && currentSelectedObject != null)
-        {
-            Debug.Log($"Syncing color to current object: {fcp.color}");
-            ApplyColorToModel(currentSelectedObject, fcp.color);
-        }
-        else if (previewModel != null)
-        {
-            Debug.Log($"Syncing color to preview model: {fcp.color}");
-            ApplyColorToModel(previewModel, fcp.color);
+            else
+            {
+                ApplyColorToModel(previewModel, co);
+            }
         }
     }
 
     private void ApplyColorToCurrentModel(Color color)
     {
-        GameObject targetModel = null;
-
-        if (isEditingExistingObject && currentSelectedObject != null)
-        {
-            targetModel = currentSelectedObject;
-        }
-        else if (previewModel != null)
-        {
-            targetModel = previewModel;
-        }
-
-        if (targetModel != null)
+        GameObject targetModel = (isEditingExistingObject && currentSelectedObject) ? currentSelectedObject : previewModel;
+        if (targetModel)
         {
             PaintManager paintManager = targetModel.GetComponent<PaintManager>();
-            if (paintManager == null)
-            {
-                ApplyColorToModel(targetModel, color);
-            }
+            if (!paintManager) ApplyColorToModel(targetModel, color);
         }
     }
 
     private void ApplyColorToModel(GameObject model, Color color)
     {
-        PaintManager paintManager = model.GetComponent<PaintManager>();
-        if (paintManager != null)
+        // 確保ColorMaterial與fcp.color同步
+        ColorMaterial.color = color;
+
+        DualMaterialManager dualManager = model.GetComponent<DualMaterialManager>();
+        if (dualManager)
         {
+            dualManager.SetColor(color);
             return;
         }
 
-        CubeCarvingSystem carvingSystem = model.GetComponent<CubeCarvingSystem>();
-        if (carvingSystem != null)
+        MeshRenderer renderer = model.GetComponent<MeshRenderer>();
+        if (renderer)
         {
-            MeshRenderer renderer = model.GetComponent<MeshRenderer>();
-            if (renderer != null)
-            {
-                Material newMaterial = new Material(ModelMaterial);
-                newMaterial.color = color;
-
-                if (newMaterial.HasProperty("_Color"))
-                    newMaterial.SetColor("_Color", color);
-                if (newMaterial.HasProperty("_BaseColor"))
-                    newMaterial.SetColor("_BaseColor", color);
-                if (newMaterial.HasProperty("_MainColor"))
-                    newMaterial.SetColor("_MainColor", color);
-                if (newMaterial.HasProperty("_Albedo"))
-                    newMaterial.SetColor("_Albedo", color);
-
-                renderer.material = newMaterial;
-            }
-        }
-        else
-        {
-            MeshRenderer[] renderers = model.GetComponentsInChildren<MeshRenderer>();
-
-            foreach (MeshRenderer renderer in renderers)
-            {
-                if (renderer != null)
-                {
-                    Material newMaterial = new Material(ModelMaterial);
-                    newMaterial.color = color;
-
-                    if (newMaterial.HasProperty("_Color"))
-                        newMaterial.SetColor("_Color", color);
-                    if (newMaterial.HasProperty("_BaseColor"))
-                        newMaterial.SetColor("_BaseColor", color);
-                    if (newMaterial.HasProperty("_MainColor"))
-                        newMaterial.SetColor("_MainColor", color);
-                    if (newMaterial.HasProperty("_Albedo"))
-                        newMaterial.SetColor("_Albedo", color);
-
-                    renderer.material = newMaterial;
-                }
-            }
+            // 使用已更新的ColorMaterial創建新材質
+            Material newMaterial = new Material(ColorMaterial);
+            newMaterial.color = color;
+            if (newMaterial.HasProperty("_Color"))
+                newMaterial.SetColor("_Color", color);
+            renderer.material = newMaterial;
         }
     }
 
     void SetupSlider(Slider slider, float min, float max, float defaultValue, UnityEngine.Events.UnityAction<float> callback)
     {
-        if (slider == null) return;
+        if (!slider) return;
         slider.minValue = min;
         slider.maxValue = max;
         slider.value = defaultValue;
@@ -572,28 +451,23 @@ public class SculptFunction : MonoBehaviour
 
     void SetupInputField(InputField inputField, string defaultValue, UnityEngine.Events.UnityAction<string> callback)
     {
-        if (inputField == null) return;
+        if (!inputField) return;
         inputField.text = defaultValue;
         inputField.onEndEdit.AddListener(callback);
     }
-    #endregion
 
-    #region Shape&Generate
     void OnShapeSelected(VoxelShape shape)
     {
         selectedShape = shape;
         currentRotationY = 0f;
         modelRotation = Vector3.zero;
         isEditingExistingObject = false;
-
         uiManager.SculptPanel1?.SetActive(false);
         uiManager.SculptPanel2?.SetActive(true);
         uiManager.FunctionUISwitch();
-
         uiManager.isGroundChecking = true;
         uiManager.lightshipNavMeshRenderer.enabled = true;
         uiManager.GroundCheck.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
-
         CreatePreviewModel();
         UpdateRotationYUI();
         SetDefaultPositionLockState(false);
@@ -601,65 +475,41 @@ public class SculptFunction : MonoBehaviour
 
     void CreatePreviewModel()
     {
-        if (previewModel != null) Destroy(previewModel);
-
-        Vector3 currentScale = new Vector3(
-            mainScale * individualScale.x,
-            mainScale * individualScale.y,
-            mainScale * individualScale.z
-        );
-
+        if (previewModel) Destroy(previewModel);
+        Vector3 currentScale = new Vector3(mainScale * individualScale.x, mainScale * individualScale.y, mainScale * individualScale.z);
         previewModel = GenerateShapeWithParameters(selectedShape, currentScale, gridSize, true);
-
-        if (previewModel != null)
+        if (previewModel)
         {
             ApplyColorToModel(previewModel, fcp.color);
             SetLayerRecursively(previewModel, LayerMask.NameToLayer("PreviewObject"));
-
             CalculateDynamicForwardDistance();
         }
     }
 
-    private IEnumerator ApplyColorAfterMeshGeneration(GameObject model, Color color)
-    {
-        yield return null;
-        yield return null;
-
-        ApplyColorToModel(model, color);
-    }
-
     public GameObject GenerateShapeWithParameters(VoxelShape shapeType, Vector3 scale, int gridSize, bool isPreview = false)
     {
-        if (cubeCarvingSystemPrefab == null)
-        {
-            return null;
-        }
-
+        if (!cubeCarvingSystemPrefab) return null;
         Vector3 spawnPosition = GetSpawnPosition();
         GameObject newCarvingSystem = Instantiate(cubeCarvingSystemPrefab, spawnPosition, Quaternion.identity);
         newCarvingSystem.transform.localScale = scale;
         newCarvingSystem.name = $"CubeCarvingSystem_{shapeType}{(isPreview ? "_Preview" : "_Final")}";
-
         CubeCarvingSystem carvingSystem = newCarvingSystem.GetComponent<CubeCarvingSystem>();
-        if (carvingSystem != null)
+        if (carvingSystem)
         {
             carvingSystem.SetParameters(defaultCubeSize, gridSize, shapeType);
-        }
-        else
-        {
-            return newCarvingSystem;
+            if (!allCarvingSystems.Contains(carvingSystem)) allCarvingSystems.Add(carvingSystem);
         }
 
-        if (isPreview)
-        {
-            SetMaterialAndLayer(newCarvingSystem, previewMaterial, "PreviewObject");
-        }
+        // 添加DualMaterialManager
+        DualMaterialManager dualManager = newCarvingSystem.GetComponent<DualMaterialManager>();
+        if (!dualManager) dualManager = newCarvingSystem.AddComponent<DualMaterialManager>();
+
+        if (isPreview) SetMaterialAndLayer(newCarvingSystem, ColorMaterial, "PreviewObject");
         else
         {
-            SetMaterialAndLayer(newCarvingSystem, finalMaterial, "SculptObject");
+            SetMaterialAndLayer(newCarvingSystem, ColorMaterial, "SculptObject");
             StartCoroutine(InitializeModelStatAfterMesh(newCarvingSystem, shapeType));
         }
-
         return newCarvingSystem;
     }
 
@@ -667,13 +517,7 @@ public class SculptFunction : MonoBehaviour
     {
         yield return null;
         yield return null;
-
-        ModelStat modelStat = gameObject.GetComponent<ModelStat>();
-        if (modelStat == null)
-        {
-            modelStat = gameObject.AddComponent<ModelStat>();
-        }
-
+        ModelStat modelStat = gameObject.GetComponent<ModelStat>() ?? gameObject.AddComponent<ModelStat>();
         ModelData modelData = new ModelData
         {
             filename = gameObject.name,
@@ -684,83 +528,28 @@ public class SculptFunction : MonoBehaviour
             materialColor = fcp.color,
             timestamp = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
         };
-
         modelStat.SetModelData(modelData);
     }
 
-    private IEnumerator InitializeModelStatNextFrame(ModelStat modelStat, GameObject gameObject, VoxelShape shapeType)
-    {
-        yield return null;
-
-        ModelData modelData = new ModelData
-        {
-            filename = gameObject.name,
-            shapeType = shapeType.ToString(),
-            position = gameObject.transform.position,
-            rotation = gameObject.transform.eulerAngles,
-            scale = gameObject.transform.localScale,
-            timestamp = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
-        };
-
-        modelStat.SetModelData(modelData);
-    }
-
-
-    private Vector3 GetSpawnPosition()
-    {
-        return targetCamera != null ?
-            targetCamera.transform.position + targetCamera.transform.forward * 1.5f :
-            Vector3.forward;
-    }
+    private Vector3 GetSpawnPosition() => targetCamera ? targetCamera.transform.position + targetCamera.transform.forward * 1.5f : Vector3.forward;
 
     void SetMaterialAndLayer(GameObject obj, Material material, string layerName)
     {
-        if (material != null)
+        if (material)
         {
             MeshRenderer renderer = obj.GetComponent<MeshRenderer>();
-            if (renderer != null)
-            {
-                renderer.material = material;
-            }
+            if (renderer) renderer.material = material;
         }
-
         int layer = LayerMask.NameToLayer(layerName);
-        if (layer != -1)
-        {
-            SetLayerRecursively(obj, layer);
-        }
-        else
-        {
-            if (layerName == "SculptObject")
-            {
-                SetLayerRecursively(obj, 0);
-            }
-        }
-
-        if (layerName == "SculptObject")
-        {
-            obj.tag = "SculptObject";
-        }
+        if (layer != -1) SetLayerRecursively(obj, layer);
+        else if (layerName == "SculptObject") SetLayerRecursively(obj, 0);
+        if (layerName == "SculptObject") obj.tag = "SculptObject";
     }
 
-    private void UpdateCuttingToolPosition(float sliderValue)
-    {
-        if (CuttingTool == null) return;
-
-        Vector3 startPosition = new Vector3(0.5f, -0.85f, 0.6f);
-        Vector3 endPosition = new Vector3(0.3f, -0.45f, 1.5f);
-
-        Vector3 newPosition = Vector3.Lerp(startPosition, endPosition, sliderValue);
-        CuttingTool.transform.localPosition = newPosition;
-    }
-    #endregion
-
-    #region ModelTransform
     void UpdatePreviewModelPosition()
     {
-        if (Camera.main == null) return;
-
-        if (isEditingExistingObject && currentSelectedObject != null)
+        if (!Camera.main) return;
+        if (isEditingExistingObject && currentSelectedObject)
         {
             if (positionLock)
             {
@@ -776,8 +565,7 @@ public class SculptFunction : MonoBehaviour
             }
             return;
         }
-
-        if (previewModel != null)
+        if (previewModel)
         {
             if (positionLock)
             {
@@ -786,17 +574,13 @@ public class SculptFunction : MonoBehaviour
                 previewModel.transform.position = newPosition;
                 previewModel.transform.rotation = Quaternion.Euler(modelRotation);
             }
-            else
-            {
-                UpdateObjectToFollowCamera(previewModel);
-            }
+            else UpdateObjectToFollowCamera(previewModel);
         }
     }
 
     void CalculateDynamicForwardDistanceForObject(GameObject obj)
     {
-        if (obj == null) return;
-
+        if (!obj) return;
         Vector3 scale = obj.transform.localScale;
         float actualZScale = scale.z;
         float zScaleDifference = actualZScale - 1.0f;
@@ -807,10 +591,7 @@ public class SculptFunction : MonoBehaviour
     {
         Vector3 cameraForward = Camera.main.transform.forward;
         Vector3 horizontalForward = new Vector3(cameraForward.x, 0, cameraForward.z).normalized;
-
-        if (horizontalForward.magnitude < 0.1f)
-            horizontalForward = Vector3.forward;
-
+        if (horizontalForward.magnitude < 0.1f) horizontalForward = Vector3.forward;
         return horizontalForward;
     }
 
@@ -818,37 +599,18 @@ public class SculptFunction : MonoBehaviour
     {
         Vector3 cameraPosition = Camera.main.transform.position;
         Vector3 horizontalForward = GetHorizontalForward();
-
         bool shouldRaycast = Time.time - lastRaycastTime > raycastCacheTime;
         if (shouldRaycast)
         {
             Vector3 rayOrigin = cameraPosition + horizontalForward * dynamicForwardDistance;
             Ray ray = new Ray(rayOrigin, Vector3.down);
-
-            int layerMask = ~(1 << LayerMask.NameToLayer("PreviewObject"));
-
-            if (LayerMask.NameToLayer("PreviewObject") == -1)
-            {
-                layerMask = ~0;
-            }
-
+            int layerMask = LayerMask.NameToLayer("PreviewObject") == -1 ? ~0 : ~(1 << LayerMask.NameToLayer("PreviewObject"));
             cachedHitResult = Physics.Raycast(ray, out cachedHit, downwardCheckDistance, layerMask);
             lastRaycastTime = Time.time;
         }
-
-        Vector3 targetPosition;
-        if (cachedHitResult && uiManager.isGroundChecking)
-        {
-            targetPosition = GetGroundPositionForObject(cachedHit.point, targetObject);
-        }
-        else
-        {
-            targetPosition = GetDefaultPosition(cameraPosition, horizontalForward);
-        }
-
+        Vector3 targetPosition = (cachedHitResult && uiManager.isGroundChecking) ? GetGroundPositionForObject(cachedHit.point, targetObject) : GetDefaultPosition(cameraPosition, horizontalForward);
         targetObject.transform.position = targetPosition;
         targetObject.transform.rotation = GetModelRotation(horizontalForward);
-
         lastPreviewPosition = targetObject.transform.position;
         lastPreviewRotation = targetObject.transform.rotation;
     }
@@ -857,20 +619,7 @@ public class SculptFunction : MonoBehaviour
     {
         Vector3 position = hitPoint;
         Renderer renderer = targetObject.GetComponent<Renderer>();
-        if (renderer != null)
-        {
-            float halfHeight = renderer.bounds.extents.y;
-            position.y += halfHeight;
-        }
-        position.y += heightOffset;
-        return position;
-    }
-
-    Vector3 GetGroundPosition(Vector3 hitPoint)
-    {
-        Vector3 position = hitPoint;
-        Renderer renderer = previewModel.GetComponent<Renderer>();
-        if (renderer != null)
+        if (renderer)
         {
             float halfHeight = renderer.bounds.extents.y;
             position.y += halfHeight;
@@ -888,16 +637,9 @@ public class SculptFunction : MonoBehaviour
 
     Quaternion GetModelRotation(Vector3 horizontalForward)
     {
-        if (positionLock)
-        {
-            return Quaternion.Euler(modelRotation);
-        }
-
-        Quaternion baseRotation = horizontalForward != Vector3.zero ?
-            Quaternion.LookRotation(horizontalForward) : Quaternion.identity;
-
+        if (positionLock) return Quaternion.Euler(modelRotation);
+        Quaternion baseRotation = horizontalForward != Vector3.zero ? Quaternion.LookRotation(horizontalForward) : Quaternion.identity;
         Quaternion uiRotation = Quaternion.Euler(modelRotation.x, modelRotation.y, modelRotation.z);
-
         return baseRotation * uiRotation;
     }
 
@@ -907,47 +649,27 @@ public class SculptFunction : MonoBehaviour
         float zScaleDifference = actualZScale - 1.0f;
         dynamicForwardDistance = Mathf.Max(baseForwardDistance + zScaleDifference, 0.5f);
     }
-    #endregion
 
     public void TogglePositionLock()
     {
         positionLock = !positionLock;
-
         if (positionLock)
         {
-            if (isEditingExistingObject && currentSelectedObject != null)
+            if (isEditingExistingObject && currentSelectedObject)
             {
                 lockedPosition = currentSelectedObject.transform.position;
                 lockedPosition.y -= heightOffset;
             }
-            else if (previewModel != null)
-            {
-                lockedPosition = previewModel.transform.position;
-            }
+            else if (previewModel) lockedPosition = previewModel.transform.position;
         }
-        else
-        {
-            if (isEditingExistingObject && currentSelectedObject != null)
-            {
-                CalculateDynamicForwardDistanceForObject(currentSelectedObject);
-            }
-        }
-
+        else if (isEditingExistingObject && currentSelectedObject) CalculateDynamicForwardDistanceForObject(currentSelectedObject);
         UpdatePositionLockUI();
     }
 
     private void UpdatePositionLockUI()
     {
-        if (PositionLockButton == null) return;
-
-        if (positionLock)
-        {
-            PositionLockButton.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
-        }
-        else
-        {
-            PositionLockButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
-        }
+        if (!PositionLockButton) return;
+        PositionLockButton.GetComponent<Image>().color = positionLock ? new Color(143f / 255f, 255f / 255f, 196f / 255f) : new Color(128f / 255f, 128f / 255f, 128f / 255f);
     }
 
     private void SetDefaultPositionLockState(bool isEditMode)
@@ -958,23 +680,13 @@ public class SculptFunction : MonoBehaviour
             lockedPosition = currentSelectedObject.transform.position;
             lockedPosition.y -= heightOffset;
         }
-        else
-        {
-            positionLock = false;
-        }
-
+        else positionLock = false;
         UpdatePositionLockUI();
     }
 
-    #region RotationControl
     void HandleRotationInput()
     {
-        if (IsPointerOverUIElement())
-        {
-            isRotating = false;
-            return;
-        }
-
+        if (IsPointerOverUIElement()) { isRotating = false; return; }
 #if UNITY_EDITOR
         HandleMouseRotation();
 #else
@@ -996,13 +708,9 @@ public class SculptFunction : MonoBehaviour
             currentRotationY = NormalizeAngle(currentRotationY);
             modelRotation.y = currentRotationY;
             UpdateRotationYUI();
-
             lastTouchPosition = Input.mousePosition;
         }
-        else if (Input.GetMouseButtonUp(0))
-        {
-            isRotating = false;
-        }
+        else if (Input.GetMouseButtonUp(0)) isRotating = false;
     }
 
     void HandleTouchRotation()
@@ -1024,7 +732,6 @@ public class SculptFunction : MonoBehaviour
                         currentRotationY = NormalizeAngle(currentRotationY);
                         modelRotation.y = currentRotationY;
                         UpdateRotationYUI();
-
                         lastTouchPosition = touch.position;
                     }
                     break;
@@ -1038,24 +745,19 @@ public class SculptFunction : MonoBehaviour
 
     bool IsPointerOverUIElement()
     {
-        if (UnityEngine.EventSystems.EventSystem.current == null) return false;
-
+        if (!UnityEngine.EventSystems.EventSystem.current) return false;
 #if UNITY_EDITOR
         return UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
 #else
-        return Input.touchCount > 0 &&
-               UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject(Input.GetTouch(0).fingerId);
+        return Input.touchCount > 0 && UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject(Input.GetTouch(0).fingerId);
 #endif
     }
-    #endregion
 
-    #region UIEvent
     void OnMainScaleChanged(float value)
     {
         if (isUpdatingUI) return;
         mainScale = value;
-        if (MainScaleValue != null) MainScaleValue.text = $"{Mathf.RoundToInt(value * 100)}%";
-
+        if (MainScaleValue) MainScaleValue.text = $"{Mathf.RoundToInt(value * 100)}%";
         SyncMainScaleToIndividualSliders(value);
         individualScale = Vector3.one * value;
         UpdateIndividualScaleInputs();
@@ -1065,9 +767,9 @@ public class SculptFunction : MonoBehaviour
     void SyncMainScaleToIndividualSliders(float value)
     {
         isUpdatingUI = true;
-        if (ScaleXSlider != null) ScaleXSlider.value = value;
-        if (ScaleYSlider != null) ScaleYSlider.value = value;
-        if (ScaleZSlider != null) ScaleZSlider.value = value;
+        if (ScaleXSlider) ScaleXSlider.value = value;
+        if (ScaleYSlider) ScaleYSlider.value = value;
+        if (ScaleZSlider) ScaleZSlider.value = value;
         isUpdatingUI = false;
     }
 
@@ -1075,17 +777,16 @@ public class SculptFunction : MonoBehaviour
     {
         if (isUpdatingUI) return;
         heightOffset = value;
-        if (HeightValue != null) HeightValue.text = value.ToString("F2");
-
+        if (HeightValue) HeightValue.text = value.ToString("F2");
         if (positionLock)
         {
-            if (isEditingExistingObject && currentSelectedObject != null)
+            if (isEditingExistingObject && currentSelectedObject)
             {
                 Vector3 newPosition = lockedPosition;
                 newPosition.y = lockedPosition.y + value;
                 currentSelectedObject.transform.position = newPosition;
             }
-            else if (previewModel != null)
+            else if (previewModel)
             {
                 Vector3 newPosition = lockedPosition;
                 newPosition.y = lockedPosition.y + value;
@@ -1098,7 +799,7 @@ public class SculptFunction : MonoBehaviour
     {
         if (isUpdatingUI) return;
         individualScale.x = value;
-        if (ScaleXInputField != null) ScaleXInputField.text = value.ToString("F2");
+        if (ScaleXInputField) ScaleXInputField.text = value.ToString("F2");
         UpdateTargetModel();
     }
 
@@ -1106,7 +807,7 @@ public class SculptFunction : MonoBehaviour
     {
         if (isUpdatingUI) return;
         individualScale.y = value;
-        if (ScaleYInputField != null) ScaleYInputField.text = value.ToString("F2");
+        if (ScaleYInputField) ScaleYInputField.text = value.ToString("F2");
         UpdateTargetModel();
     }
 
@@ -1114,7 +815,7 @@ public class SculptFunction : MonoBehaviour
     {
         if (isUpdatingUI) return;
         individualScale.z = value;
-        if (ScaleZInputField != null) ScaleZInputField.text = value.ToString("F2");
+        if (ScaleZInputField) ScaleZInputField.text = value.ToString("F2");
         UpdateTargetModel();
     }
 
@@ -1126,7 +827,7 @@ public class SculptFunction : MonoBehaviour
     {
         if (isUpdatingUI) return;
         modelRotation.x = value;
-        if (RotationXInputField != null) RotationXInputField.text = Mathf.RoundToInt(value).ToString();
+        if (RotationXInputField) RotationXInputField.text = Mathf.RoundToInt(value).ToString();
         UpdateTargetModel();
     }
 
@@ -1135,7 +836,7 @@ public class SculptFunction : MonoBehaviour
         if (isUpdatingUI) return;
         modelRotation.y = value;
         currentRotationY = value;
-        if (RotationYInputField != null) RotationYInputField.text = Mathf.RoundToInt(value).ToString();
+        if (RotationYInputField) RotationYInputField.text = Mathf.RoundToInt(value).ToString();
         UpdateTargetModel();
     }
 
@@ -1143,7 +844,7 @@ public class SculptFunction : MonoBehaviour
     {
         if (isUpdatingUI) return;
         modelRotation.z = value;
-        if (RotationZInputField != null) RotationZInputField.text = Mathf.RoundToInt(value).ToString();
+        if (RotationZInputField) RotationZInputField.text = Mathf.RoundToInt(value).ToString();
         UpdateTargetModel();
     }
 
@@ -1154,9 +855,7 @@ public class SculptFunction : MonoBehaviour
     void HandleRotationInputChange(string value, int axis)
     {
         if (isUpdatingUI || !float.TryParse(value, out float result)) return;
-
         result = NormalizeAngle(result);
-
         switch (axis)
         {
             case 0:
@@ -1179,8 +878,8 @@ public class SculptFunction : MonoBehaviour
     void UpdateRotationSliderAndInput(Slider slider, InputField inputField, float value)
     {
         isUpdatingUI = true;
-        if (slider != null) slider.value = value;
-        if (inputField != null) inputField.text = Mathf.RoundToInt(value).ToString();
+        if (slider) slider.value = value;
+        if (inputField) inputField.text = Mathf.RoundToInt(value).ToString();
         isUpdatingUI = false;
     }
 
@@ -1194,123 +893,84 @@ public class SculptFunction : MonoBehaviour
     void UpdateRotationYUI()
     {
         if (isUpdatingUI) return;
-
         isUpdatingUI = true;
-        if (RotationYSlider != null) RotationYSlider.value = modelRotation.y;
-        if (RotationYInputField != null) RotationYInputField.text = Mathf.RoundToInt(modelRotation.y).ToString();
+        if (RotationYSlider) RotationYSlider.value = modelRotation.y;
+        if (RotationYInputField) RotationYInputField.text = Mathf.RoundToInt(modelRotation.y).ToString();
         isUpdatingUI = false;
     }
 
     void HandleScaleInputChange(string value, int axis)
     {
         if (isUpdatingUI || !float.TryParse(value, out float result)) return;
-
         result = Mathf.Clamp(result, 0.1f, 3f);
-
         switch (axis)
         {
             case 0: individualScale.x = result; UpdateSliderAndInput(ScaleXSlider, ScaleXInputField, result); break;
             case 1: individualScale.y = result; UpdateSliderAndInput(ScaleYSlider, ScaleYInputField, result); break;
             case 2: individualScale.z = result; UpdateSliderAndInput(ScaleZSlider, ScaleZInputField, result); break;
         }
-
         UpdateTargetModel();
     }
 
     void UpdateSliderAndInput(Slider slider, InputField inputField, float value)
     {
         isUpdatingUI = true;
-        if (slider != null) slider.value = value;
-        if (inputField != null) inputField.text = value.ToString("F2");
+        if (slider) slider.value = value;
+        if (inputField) inputField.text = value.ToString("F2");
         isUpdatingUI = false;
     }
 
     void OnGridInputChanged(string value)
     {
         if (isUpdatingUI || !int.TryParse(value, out int result)) return;
-
         result = Mathf.Clamp(result, 1, 100);
         gridSize = result;
-        if (GridInputField != null) GridInputField.text = result.ToString();
+        if (GridInputField) GridInputField.text = result.ToString();
         UpdateTargetModel();
     }
-    #endregion
 
-    #region ButtonEvent
     void OnGenerateButtonClicked()
     {
-        if (isEditingExistingObject)
-        {
-            ApplyEditChanges();
-        }
-        else
-        {
-            CreateNewObject();
-        }
+        if (isEditingExistingObject) ApplyEditChanges();
+        else CreateNewObject();
         SwitchToHome();
     }
 
     void CreateNewObject()
     {
-        if (previewModel != null)
+        if (previewModel)
         {
             lastPreviewPosition = previewModel.transform.position;
             lastPreviewRotation = previewModel.transform.rotation;
             Destroy(previewModel);
             previewModel = null;
         }
-
-        Vector3 finalScale = new Vector3(
-            mainScale * individualScale.x,
-            mainScale * individualScale.y,
-            mainScale * individualScale.z
-        );
-
+        Vector3 finalScale = new Vector3(mainScale * individualScale.x, mainScale * individualScale.y, mainScale * individualScale.z);
         finalModel = GenerateShapeWithParameters(selectedShape, finalScale, gridSize, false);
-
-        if (finalModel != null)
+        if (finalModel)
         {
             finalModel.transform.position = lastPreviewPosition;
             finalModel.transform.rotation = lastPreviewRotation;
-            SetMaterialAndLayer(finalModel, finalMaterial, "SculptObject");
-
+            SetMaterialAndLayer(finalModel, ColorMaterial, "SculptObject");
             PaintManager paintManager = finalModel.GetComponent<PaintManager>();
-            if (paintManager == null)
-            {
-                StartCoroutine(ApplyColorAfterMeshGeneration(finalModel, fcp.color));
-            }
+            if (!paintManager) StartCoroutine(ApplyColorAfterMeshGeneration(finalModel, fcp.color));
         }
     }
 
     void ApplyEditChanges()
     {
-        if (currentSelectedObject == null) return;
-
-        Vector3 finalScale = new Vector3(
-            mainScale * individualScale.x,
-            mainScale * individualScale.y,
-            mainScale * individualScale.z
-        );
-
+        if (!currentSelectedObject) return;
+        Vector3 finalScale = new Vector3(mainScale * individualScale.x, mainScale * individualScale.y, mainScale * individualScale.z);
         currentSelectedObject.transform.localScale = finalScale;
         currentSelectedObject.transform.rotation = Quaternion.Euler(modelRotation);
         SetLayerRecursively(currentSelectedObject, LayerMask.NameToLayer("SculptObject"));
-
         PaintManager paintManager = currentSelectedObject.GetComponent<PaintManager>();
-        if (paintManager == null)
-        {
-            StartCoroutine(ApplyColorAfterMeshGeneration(currentSelectedObject, fcp.color));
-        }
-
+        if (!paintManager) StartCoroutine(ApplyColorAfterMeshGeneration(currentSelectedObject, fcp.color));
         ModelStat modelStat = currentSelectedObject.GetComponent<ModelStat>();
-        if (modelStat != null)
+        if (modelStat)
         {
             Color colorToSave = fcp.color;
-            if (paintManager != null)
-            {
-                colorToSave = modelStat.ModelData.materialColor;
-            }
-
+            if (paintManager) colorToSave = modelStat.ModelData.materialColor;
             ModelData updatedData = new ModelData
             {
                 filename = currentSelectedObject.name,
@@ -1321,29 +981,26 @@ public class SculptFunction : MonoBehaviour
                 materialColor = colorToSave,
                 timestamp = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
             };
-
             modelStat.SetModelData(updatedData);
         }
-
         DeselectCurrentObject();
+    }
+
+    private IEnumerator ApplyColorAfterMeshGeneration(GameObject model, Color color)
+    {
+        yield return null;
+        yield return null;
+        ApplyColorToModel(model, color);
     }
 
     void OnResetButtonClicked()
     {
-        if (isEditingExistingObject)
-        {
-            ResetToOriginalParameters();
-        }
-        else
-        {
-            ResetAllParameters();
-        }
-
+        if (isEditingExistingObject) ResetToOriginalParameters();
+        else ResetAllParameters();
         UpdateAllUIValues();
-
         if (isEditingExistingObject)
         {
-            if (currentSelectedObject != null)
+            if (currentSelectedObject)
             {
                 currentSelectedObject.transform.localScale = originalObjectScale;
                 currentSelectedObject.transform.rotation = Quaternion.Euler(originalObjectRotation);
@@ -1351,39 +1008,17 @@ public class SculptFunction : MonoBehaviour
                 lockedPosition = originalObjectPosition;
             }
         }
-        else
-        {
-            CreatePreviewModel();
-        }
+        else CreatePreviewModel();
     }
 
     void ResetToOriginalParameters()
     {
-        if (currentSelectedObject == null) return;
-
+        if (!currentSelectedObject) return;
         Vector3 scale = originalObjectScale;
         mainScale = Mathf.Max(scale.x, scale.y, scale.z);
-
-        if (mainScale > 0)
-        {
-            individualScale = new Vector3(
-                scale.x / mainScale,
-                scale.y / mainScale,
-                scale.z / mainScale
-            );
-        }
-        else
-        {
-            individualScale = Vector3.one;
-            mainScale = 1f;
-        }
-
-        modelRotation = new Vector3(
-            NormalizeAngle(originalObjectRotation.x),
-            NormalizeAngle(originalObjectRotation.y),
-            NormalizeAngle(originalObjectRotation.z)
-        );
-
+        if (mainScale > 0) individualScale = new Vector3(scale.x / mainScale, scale.y / mainScale, scale.z / mainScale);
+        else { individualScale = Vector3.one; mainScale = 1f; }
+        modelRotation = new Vector3(NormalizeAngle(originalObjectRotation.x), NormalizeAngle(originalObjectRotation.y), NormalizeAngle(originalObjectRotation.z));
         currentRotationY = modelRotation.y;
         gridSize = defaultGridSize;
         heightOffset = 0f;
@@ -1393,16 +1028,8 @@ public class SculptFunction : MonoBehaviour
     {
         if (!uiManager.isInColorPage)
         {
-            if (isEditingExistingObject)
-            {
-                DeselectCurrentObject();
-            }
-
-            if (previewModel != null)
-            {
-                Destroy(previewModel);
-                previewModel = null;
-            }
+            if (isEditingExistingObject) DeselectCurrentObject();
+            if (previewModel) { Destroy(previewModel); previewModel = null; }
         }
     }
 
@@ -1412,7 +1039,6 @@ public class SculptFunction : MonoBehaviour
         uiManager.SculptPanel2?.SetActive(false);
         uiManager.UIHome?.SetActive(true);
         uiManager.BackButton?.SetActive(false);
-
         isEditingExistingObject = false;
         uiManager.inSculpt = false;
         uiManager.lightshipNavMeshRenderer.enabled = false;
@@ -1428,39 +1054,19 @@ public class SculptFunction : MonoBehaviour
         heightOffset = 0f;
         modelRotation = Vector3.zero;
     }
-    #endregion
 
-    #region ToolFunction
     void UpdateTargetModel()
     {
         GameObject targetModel = isEditingExistingObject ? currentSelectedObject : previewModel;
-        if (targetModel == null) return;
-
-        Vector3 finalScale = new Vector3(
-            mainScale * individualScale.x,
-            mainScale * individualScale.y,
-            mainScale * individualScale.z
-        );
-
+        if (!targetModel) return;
+        Vector3 finalScale = new Vector3(mainScale * individualScale.x, mainScale * individualScale.y, mainScale * individualScale.z);
         targetModel.transform.localScale = finalScale;
-
-        if (positionLock)
-        {
-            targetModel.transform.rotation = Quaternion.Euler(modelRotation);
-        }
-
-        if (isEditingExistingObject)
-        {
-            return;
-        }
-
-        if (previewModel != null)
+        if (positionLock) targetModel.transform.rotation = Quaternion.Euler(modelRotation);
+        if (isEditingExistingObject) return;
+        if (previewModel)
         {
             CubeCarvingSystem carvingSystem = targetModel.GetComponent<CubeCarvingSystem>();
-            if (carvingSystem != null)
-            {
-                carvingSystem.SetParameters(1f, gridSize, selectedShape);
-            }
+            if (carvingSystem) carvingSystem.SetParameters(1f, gridSize, selectedShape);
             CalculateDynamicForwardDistance();
         }
     }
@@ -1468,48 +1074,39 @@ public class SculptFunction : MonoBehaviour
     private bool IsObjectCarved(GameObject obj)
     {
         CubeCarvingSystem carvingSystem = obj.GetComponent<CubeCarvingSystem>();
-        if (carvingSystem == null) return false;
-
+        if (!carvingSystem) return false;
         MeshFilter meshFilter = obj.GetComponent<MeshFilter>();
-        if (meshFilter != null && meshFilter.mesh != null)
-        {
-            return meshFilter.mesh.vertexCount > 0;
-        }
-
-        return false;
+        return meshFilter?.mesh && meshFilter.mesh.vertexCount > 0;
     }
 
     private void SetLayerRecursively(GameObject obj, int layer)
     {
-        if (obj == null) return;
+        if (!obj) return;
         obj.layer = layer;
-        foreach (Transform child in obj.transform)
-        {
-            SetLayerRecursively(child.gameObject, layer);
-        }
+        foreach (Transform child in obj.transform) SetLayerRecursively(child.gameObject, layer);
     }
 
     public void Clear()
     {
-        if (currentSelectedObject != null)
+        if (currentSelectedObject)
         {
+            CubeCarvingSystem carvingSystem = currentSelectedObject.GetComponent<CubeCarvingSystem>();
+            if (carvingSystem) allCarvingSystems.Remove(carvingSystem);
             Destroy(currentSelectedObject);
             currentSelectedObject = null;
             isEditingExistingObject = false;
-            //ClearButton.SetActive(false);
-
             SwitchToHome();
         }
     }
 
+    void OnDestroy() => allCarvingSystems.Clear();
+
     public void CancelEditChanges()
     {
-        if (!isEditingExistingObject || currentSelectedObject == null) return;
-
+        if (!isEditingExistingObject || !currentSelectedObject) return;
         currentSelectedObject.transform.localScale = originalObjectScale;
         currentSelectedObject.transform.rotation = Quaternion.Euler(originalObjectRotation);
         currentSelectedObject.transform.position = originalObjectPosition;
-
         RestoreObjectOriginalColor(currentSelectedObject);
         SetLayerRecursively(currentSelectedObject, originalLayer);
         DeselectCurrentObject();
@@ -1519,60 +1116,88 @@ public class SculptFunction : MonoBehaviour
     public void UpdateAllUIValues()
     {
         isUpdatingUI = true;
-
-        if (MainScaleSlider != null) MainScaleSlider.value = mainScale;
-        if (HeightSlider != null) HeightSlider.value = heightOffset;
-        if (ScaleXSlider != null) ScaleXSlider.value = individualScale.x;
-        if (ScaleYSlider != null) ScaleYSlider.value = individualScale.y;
-        if (ScaleZSlider != null) ScaleZSlider.value = individualScale.z;
-
-        if (RotationXSlider != null) RotationXSlider.value = modelRotation.x;
-        if (RotationYSlider != null) RotationYSlider.value = modelRotation.y;
-        if (RotationZSlider != null) RotationZSlider.value = modelRotation.z;
-
-        if (MainScaleValue != null) MainScaleValue.text = $"{Mathf.RoundToInt(mainScale * 100)}%";
-        if (HeightValue != null) HeightValue.text = heightOffset.ToString("F2");
-
+        if (MainScaleSlider) MainScaleSlider.value = mainScale;
+        if (HeightSlider) HeightSlider.value = heightOffset;
+        if (ScaleXSlider) ScaleXSlider.value = individualScale.x;
+        if (ScaleYSlider) ScaleYSlider.value = individualScale.y;
+        if (ScaleZSlider) ScaleZSlider.value = individualScale.z;
+        if (RotationXSlider) RotationXSlider.value = modelRotation.x;
+        if (RotationYSlider) RotationYSlider.value = modelRotation.y;
+        if (RotationZSlider) RotationZSlider.value = modelRotation.z;
+        if (MainScaleValue) MainScaleValue.text = $"{Mathf.RoundToInt(mainScale * 100)}%";
+        if (HeightValue) HeightValue.text = heightOffset.ToString("F2");
         UpdateIndividualScaleInputs();
         UpdateRotationInputs();
         UpdateGridInput();
-
         isUpdatingUI = false;
     }
 
     void UpdateIndividualScaleInputs()
     {
-        if (ScaleXInputField != null) ScaleXInputField.text = individualScale.x.ToString("F2");
-        if (ScaleYInputField != null) ScaleYInputField.text = individualScale.y.ToString("F2");
-        if (ScaleZInputField != null) ScaleZInputField.text = individualScale.z.ToString("F2");
+        if (ScaleXInputField) ScaleXInputField.text = individualScale.x.ToString("F2");
+        if (ScaleYInputField) ScaleYInputField.text = individualScale.y.ToString("F2");
+        if (ScaleZInputField) ScaleZInputField.text = individualScale.z.ToString("F2");
     }
 
     void UpdateRotationInputs()
     {
-        if (RotationXInputField != null) RotationXInputField.text = Mathf.RoundToInt(modelRotation.x).ToString();
-        if (RotationYInputField != null) RotationYInputField.text = Mathf.RoundToInt(modelRotation.y).ToString();
-        if (RotationZInputField != null) RotationZInputField.text = Mathf.RoundToInt(modelRotation.z).ToString();
+        if (RotationXInputField) RotationXInputField.text = Mathf.RoundToInt(modelRotation.x).ToString();
+        if (RotationYInputField) RotationYInputField.text = Mathf.RoundToInt(modelRotation.y).ToString();
+        if (RotationZInputField) RotationZInputField.text = Mathf.RoundToInt(modelRotation.z).ToString();
     }
 
     void UpdateGridInput()
     {
-        if (GridInputField != null) GridInputField.text = gridSize.ToString();
+        if (GridInputField) GridInputField.text = gridSize.ToString();
     }
 
     private void RestoreObjectOriginalColor(GameObject obj)
     {
         PaintManager paintManager = obj.GetComponent<PaintManager>();
-        if (paintManager != null)
-        {
-            return;
-        }
-
+        if (paintManager) return;
         ModelStat modelStat = obj.GetComponent<ModelStat>();
-        if (modelStat != null && modelStat.IsModelDataValid())
+        if (modelStat && modelStat.IsModelDataValid())
         {
             Color savedColor = modelStat.ModelData.materialColor;
             ApplyColorToModel(obj, savedColor);
         }
     }
-    #endregion
+
+    // 接收圖片的方法 (供file browser調用)
+    public void OnTextureLoaded(Texture2D loadedTexture)
+    {
+        GameObject targetModel = isEditingExistingObject ? currentSelectedObject : previewModel;
+        if (targetModel)
+        {
+            DualMaterialManager dualManager = targetModel.GetComponent<DualMaterialManager>();
+            if (dualManager)
+            {
+                if (loadedTexture) dualManager.SetTextureMode(loadedTexture);
+                else dualManager.SetPaintMode();
+            }
+        }
+    }
+
+    // 清除貼圖
+    public void ClearTexture()
+    {
+        GameObject targetModel = isEditingExistingObject ? currentSelectedObject : previewModel;
+        if (targetModel)
+        {
+            DualMaterialManager dualManager = targetModel.GetComponent<DualMaterialManager>();
+            dualManager?.ClearTexture();
+        }
+    }
+
+    // 檢查是否可以繪畫
+    public bool CanPaintOnCurrentObject()
+    {
+        GameObject targetModel = isEditingExistingObject ? currentSelectedObject : previewModel;
+        if (targetModel)
+        {
+            DualMaterialManager dualManager = targetModel.GetComponent<DualMaterialManager>();
+            return dualManager && dualManager.SupportsPainting();
+        }
+        return false;
+    }
 }
