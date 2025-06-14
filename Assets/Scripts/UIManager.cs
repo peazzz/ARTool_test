@@ -172,10 +172,15 @@ public class UIManager : MonoBehaviour
         sculptFunction.SyncCurrentModelColorToUI();
     }
 
-    void BackToPanel2()
+    public void BackToPanel2()
     {
         AE.SetActive(true); SP.SetActive(true); RP.SetActive(true); OP.SetActive(true);
-        ColorPage1.SetActive(false); OtherPage.SetActive(true); isInColorPage = false;
+        ColorPage1.SetActive(false);
+        isInColorPage = false;
+
+        // 確保正確切換到 OtherPage
+        OtherPageSelect(); // 使用現有的方法來確保狀態一致
+
         if (sculptFunction) sculptFunction.SyncCurrentModelColorToUI();
     }
 

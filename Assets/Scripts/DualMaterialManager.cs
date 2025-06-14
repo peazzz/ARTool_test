@@ -4,13 +4,17 @@ using UnityEngine;
 public class DualMaterialManager : MonoBehaviour
 {
     [Header("Materials (Auto-assigned from SculptFunction)")]
-    public Material paintMaterial;    // 自動從 SculptFunction.ColorMaterial 獲取
-    public Material textureMaterial; // 自動從 SculptFunction.TextureMaterial 獲取
+    public Material paintMaterial;
+    public Material textureMaterial;
+
+    [Header("Current State")]
+    [SerializeField] private bool isInTextureMode = false;
+    [SerializeField] private Color currentColor = Color.white;
 
     private CubeCarvingSystem carvingSystem;
     private MeshRenderer meshRenderer;
     private Texture2D currentTexture;
-    private bool hasTexture = false;
+    private Material activeMaterial;
 
     void Awake()
     {
@@ -18,11 +22,29 @@ public class DualMaterialManager : MonoBehaviour
         meshRenderer = GetComponent<MeshRenderer>();
         if (!meshRenderer) meshRenderer = gameObject.AddComponent<MeshRenderer>();
 
-        // 自動從 SculptFunction 獲取材質
         AutoAssignMaterials();
-
-        // 設定初始材質
         SetPaintMode();
+    }
+
+    void Start()
+    {
+        if (!paintMaterial || !textureMaterial)
+        {
+            AutoAssignMaterials();
+        }
+
+        if (currentColor == Color.clear || currentColor == new Color(0, 0, 0, 0))
+        {
+            SculptFunction sculptFunction = FindObjectOfType<SculptFunction>();
+            if (sculptFunction && sculptFunction.fcp)
+            {
+                currentColor = sculptFunction.fcp.color;
+            }
+            else
+            {
+                currentColor = Color.white;
+            }
+        }
     }
 
     void AutoAssignMaterials()
@@ -30,7 +52,6 @@ public class DualMaterialManager : MonoBehaviour
         SculptFunction sculptFunction = FindObjectOfType<SculptFunction>();
         if (sculptFunction)
         {
-            // 如果材質尚未設定，則自動獲取
             if (!paintMaterial && sculptFunction.ColorMaterial)
             {
                 paintMaterial = sculptFunction.ColorMaterial;
@@ -40,58 +61,102 @@ public class DualMaterialManager : MonoBehaviour
             {
                 textureMaterial = sculptFunction.TextureMaterial;
             }
+
+            if (sculptFunction.fcp)
+            {
+                currentColor = sculptFunction.fcp.color;
+            }
         }
     }
 
-    // 設定為上色模式 (UnwrappedFaces UV)
     public void SetPaintMode()
     {
-        hasTexture = false;
+        isInTextureMode = false;
         currentTexture = null;
 
         if (carvingSystem)
         {
             carvingSystem.SetUVMode(UVMode.UnwrappedFaces);
-            if (paintMaterial)
-            {
-                StartCoroutine(ApplyMaterialNextFrame(paintMaterial));
-            }
+        }
+
+        if (paintMaterial)
+        {
+            StartCoroutine(ApplyPaintMaterialNextFrame());
         }
     }
 
-    // 設定為貼圖模式 (Continuous UV)  
     public void SetTextureMode(Texture2D texture)
     {
-        hasTexture = true;
+        if (!texture)
+        {
+            SetPaintMode();
+            return;
+        }
+
+        isInTextureMode = true;
         currentTexture = texture;
 
         if (carvingSystem)
         {
             carvingSystem.SetUVMode(UVMode.Continuous);
-            if (textureMaterial)
-            {
-                StartCoroutine(ApplyMaterialNextFrame(textureMaterial));
-            }
         }
-    }
 
-    IEnumerator ApplyMaterialNextFrame(Material material)
-    {
-        yield return null; // 等待UV重新生成
-
-        if (material && meshRenderer)
+        if (textureMaterial)
         {
-            meshRenderer.material = new Material(material);
-
-            // 如果有貼圖，應用到材質
-            if (hasTexture && currentTexture && meshRenderer.material.HasProperty("_MainTex"))
-            {
-                meshRenderer.material.mainTexture = currentTexture;
-            }
+            StartCoroutine(ApplyTextureMaterialNextFrame());
         }
     }
 
-    // 接收圖片的方法 (供file browser調用)
+    IEnumerator ApplyPaintMaterialNextFrame()
+    {
+        yield return null;
+        yield return null;
+
+        if (paintMaterial && meshRenderer)
+        {
+            activeMaterial = new Material(paintMaterial);
+            activeMaterial.name = $"{paintMaterial.name}_Paint_{gameObject.GetInstanceID()}";
+
+            activeMaterial.color = currentColor;
+            if (activeMaterial.HasProperty("_Color"))
+            {
+                activeMaterial.SetColor("_Color", currentColor);
+            }
+
+            if (activeMaterial.HasProperty("_MainTex"))
+            {
+                activeMaterial.mainTexture = null;
+            }
+
+            meshRenderer.material = activeMaterial;
+        }
+    }
+
+    IEnumerator ApplyTextureMaterialNextFrame()
+    {
+        yield return null;
+        yield return null;
+
+        if (textureMaterial && meshRenderer && currentTexture)
+        {
+            activeMaterial = new Material(textureMaterial);
+            activeMaterial.name = $"{textureMaterial.name}_Texture_{gameObject.GetInstanceID()}";
+
+            if (activeMaterial.HasProperty("_MainTex"))
+            {
+                activeMaterial.mainTexture = currentTexture;
+            }
+
+            activeMaterial.color = currentColor;
+            if (activeMaterial.HasProperty("_Color"))
+            {
+                activeMaterial.SetColor("_Color", currentColor);
+            }
+
+            meshRenderer.material = activeMaterial;
+        }
+    }
+
     public void OnTextureLoaded(Texture2D loadedTexture)
     {
         if (loadedTexture)
@@ -104,39 +169,106 @@ public class DualMaterialManager : MonoBehaviour
         }
     }
 
-    // 清除貼圖，回到上色模式
     public void ClearTexture()
     {
         SetPaintMode();
     }
 
-    // 檢查當前是否有貼圖
-    public bool HasTexture() => hasTexture;
+    public bool HasTexture() => isInTextureMode && currentTexture != null;
 
-    // 檢查是否支援繪畫 (只有上色模式支援)
-    public bool SupportsPainting() => !hasTexture;
+    public bool SupportsPainting() => !isInTextureMode;
 
-    // 獲取當前貼圖
     public Texture2D GetCurrentTexture() => currentTexture;
 
-    // 設定材質顏色 (只在上色模式有效)
+    public bool IsInTextureMode() => isInTextureMode;
+
     public void SetColor(Color color)
     {
-        var currentColor = color;
+        currentColor = color;
 
         if (meshRenderer && meshRenderer.material)
         {
             Material currentMat = meshRenderer.material;
 
-            // 只設置材質的基礎顏色，不影響繪圖
-            currentMat.color = color;
-
-            if (currentMat.HasProperty("_Color"))
+            if (isInTextureMode)
             {
-                currentMat.SetColor("_Color", color);
-            }
+                currentMat.color = color;
 
-            // 不要覆蓋繪圖相關的屬性
+                if (currentMat.HasProperty("_Color"))
+                {
+                    currentMat.SetColor("_Color", color);
+                }
+            }
+            else
+            {
+                currentMat.color = color;
+
+                if (currentMat.HasProperty("_Color"))
+                {
+                    currentMat.SetColor("_Color", color);
+                }
+            }
         }
+    }
+
+    public void RefreshMaterial()
+    {
+        if (isInTextureMode && currentTexture)
+        {
+            Color tempColor = currentColor;
+            SetTextureMode(currentTexture);
+            currentColor = tempColor;
+            SetColor(tempColor);
+        }
+        else
+        {
+            SetPaintMode();
+            SetColor(currentColor);
+        }
+    }
+
+    public Color GetCurrentColor() => currentColor;
+
+    public void CopyStateTo(DualMaterialManager target)
+    {
+        if (!target) return;
+
+        if (isInTextureMode && currentTexture)
+        {
+            target.SetTextureMode(currentTexture);
+        }
+        else
+        {
+            target.SetPaintMode();
+            target.SetColor(currentColor);
+        }
+    }
+
+    public void CopyStateFrom(DualMaterialManager source)
+    {
+        if (!source) return;
+
+        if (source.IsInTextureMode() && source.GetCurrentTexture())
+        {
+            SetTextureMode(source.GetCurrentTexture());
+        }
+        else
+        {
+            SetPaintMode();
+            SetColor(source.GetCurrentColor());
+        }
+    }
+
+    void OnDestroy()
+    {
+        if (activeMaterial && activeMaterial != paintMaterial && activeMaterial != textureMaterial)
+        {
+            DestroyImmediate(activeMaterial);
+        }
+    }
+
+    [System.Diagnostics.Conditional("UNITY_EDITOR")]
+    public void LogCurrentState()
+    {
     }
 }

@@ -187,40 +187,45 @@ public class DrawFunction : MonoBehaviour
     void Handle3DPainting()
     {
         Ray ray = arCamera.ScreenPointToRay(GetInputPosition());
-        if (Physics.Raycast(ray, out RaycastHit hit, 100f))
+        RaycastHit hit;
+
+        if (Physics.Raycast(ray, out hit, 100f))
         {
             if (StraightLine)
             {
                 if (textureClickEnabled && !hasProcessedClick)
-                { HandleTexture3DTwoPointDrawing(hit); hasProcessedClick = true; }
+                {
+                    HandleTexture3DTwoPointDrawing(hit);
+                    hasProcessedClick = true;
+                }
                 return;
             }
 
-            if (hit.collider.gameObject.layer == LayerMask.NameToLayer("SculptObject") ||
-                hit.collider.CompareTag("SculptObject"))
+            if (hit.collider.gameObject.layer == LayerMask.NameToLayer("SculptObject"))
             {
-                DualMaterialManager dualManager = hit.collider.GetComponent<DualMaterialManager>();
-                if (dualManager && !dualManager.SupportsPainting())
-                {
-                    return;
-                }
-
                 CubeCarvingSystem carvingSystem = hit.collider.GetComponent<CubeCarvingSystem>();
-                if (carvingSystem)
+                if (carvingSystem != null)
                 {
                     float distance = Vector3.Distance(hit.point, lastPaintPosition);
                     if (distance >= gapThreshold || lastHitObject != hit.collider.gameObject)
                     {
                         PaintManager paintManager = hit.collider.GetComponent<PaintManager>();
-                        if (!paintManager) paintManager = hit.collider.gameObject.AddComponent<PaintManager>();
+                        if (paintManager == null)
+                        {
+                            paintManager = hit.collider.gameObject.AddComponent<PaintManager>();
+                        }
 
+                        // 修正：直接設定屬性而不是呼叫不存在的方法
                         paintManager.paintColor = LineMaterial.color;
                         paintManager.brushSize = lineWidth;
 
                         Vector3 adjustedNormal = hit.normal;
-                        if (Vector3.Dot(adjustedNormal, ray.direction) > 0) adjustedNormal = -adjustedNormal;
+                        if (Vector3.Dot(adjustedNormal, ray.direction) > 0)
+                        {
+                            adjustedNormal = -adjustedNormal;
+                        }
 
-                        paintManager.PaintAt(hit.point, adjustedNormal);
+                        paintManager.PaintAt(hit.point, hit.normal);
 
                         currentPaintManager = paintManager;
                         lastHitObject = hit.collider.gameObject;
@@ -233,9 +238,15 @@ public class DrawFunction : MonoBehaviour
                 float distance = Vector3.Distance(hit.point, lastPaintPosition);
                 if (distance >= gapThreshold || lastHitObject != hit.collider.gameObject)
                 {
-                    if (!lineRenderer || lastHitObject != hit.collider.gameObject)
+                    if (lineRenderer == null || lastHitObject != hit.collider.gameObject)
+                    {
                         CreateSurfaceLineRenderer(hit.point);
-                    else AddPointToSurfaceLine(hit.point);
+                    }
+                    else
+                    {
+                        AddPointToSurfaceLine(hit.point);
+                    }
+
                     lastHitObject = hit.collider.gameObject;
                     lastPaintPosition = hit.point;
                 }
@@ -444,11 +455,11 @@ public class DrawFunction : MonoBehaviour
 
     private void TextureModeSelection()
     {
-        if (!firstWarning)
-        {
-            Warning.SetActive(true); WarningText_Texture.SetActive(true); OkButton.SetActive(true);
-            firstWarning = true;
-        }
+        //if (!firstWarning)
+        //{
+        //    Warning.SetActive(true); WarningText_Texture.SetActive(true); OkButton.SetActive(true);
+        //    firstWarning = true;
+        //}
         SpaceMode = false; TextureMode = true; Distance.SetActive(false);
         SpaceModeButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
         TextureModeButton.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);

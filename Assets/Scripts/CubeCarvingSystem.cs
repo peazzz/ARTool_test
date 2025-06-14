@@ -12,8 +12,10 @@ public struct ModelData
     public string filename, shapeType, timestamp;
     public Vector3 position, rotation, scale;
     public Color materialColor;
+    public bool hasTexture;
+    public string textureName;
 
-    public ModelData(string filename, string shapeType, Vector3 position, Vector3 rotation, Vector3 scale, Color color)
+    public ModelData(string filename, string shapeType, Vector3 position, Vector3 rotation, Vector3 scale, Color color, bool hasTexture = false, string textureName = "")
     {
         this.filename = filename;
         this.shapeType = shapeType;
@@ -21,12 +23,28 @@ public struct ModelData
         this.rotation = rotation;
         this.scale = scale;
         this.materialColor = color;
+        this.hasTexture = hasTexture;
+        this.textureName = textureName;
         this.timestamp = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
     }
 }
 
 public class CubeCarvingSystem : MonoBehaviour
 {
+    [System.Serializable]
+    public struct ModelState
+    {
+        public Vector3 position;
+        public Vector3 rotation;
+        public Vector3 scale;
+        public Color color;
+        public bool hasTexture;
+        public Texture2D texture;
+        public VoxelShape shapeType;
+        public int gridSize;
+        public bool[,,] voxelData;
+    }
+
     [SerializeField] private int gridSize = 10;
     [SerializeField] private float cubeSize = 1f;
     [SerializeField] private Material cubeMaterial;
@@ -48,6 +66,9 @@ public class CubeCarvingSystem : MonoBehaviour
     private float lastMeshUpdateTime = 0f;
     private bool carvingEnabled = true;
 
+    private ModelState savedState;
+    private bool hasSavedState = false;
+
     private class UVRegion
     {
         public Vector2 offset, size;
@@ -62,13 +83,21 @@ public class CubeCarvingSystem : MonoBehaviour
     void Start()
     {
         int estimatedSize = gridSize * gridSize * 24;
-        reusableVertices.Capacity = estimatedSize;
-        reusableTriangles.Capacity = estimatedSize * 6;
-        reusableNormals.Capacity = estimatedSize;
-        reusableUVs.Capacity = estimatedSize;
+
+        // 安全地設定 Capacity，確保不小於當前大小
+        if (estimatedSize > reusableVertices.Count)
+            reusableVertices.Capacity = estimatedSize;
+        if (estimatedSize > reusableTriangles.Count)
+            reusableTriangles.Capacity = estimatedSize * 6;
+        if (estimatedSize > reusableNormals.Count)
+            reusableNormals.Capacity = estimatedSize;
+        if (estimatedSize > reusableUVs.Count)
+            reusableUVs.Capacity = estimatedSize;
+
         InitializeVoxels();
         GenerateMesh();
         FindCarvingTools();
+        SaveCurrentState();
     }
 
     void SetupComponents()
@@ -241,14 +270,19 @@ public class CubeCarvingSystem : MonoBehaviour
         reusableUVs.Clear();
         float voxelSize = cubeSize / gridSize;
 
+        int processedVoxels = 0;
         for (int x = 0; x < gridSize; x++)
             for (int y = 0; y < gridSize; y++)
                 for (int z = 0; z < gridSize; z++)
                     if (voxels[x, y, z])
+                    {
                         GenerateVoxelFaces(x, y, z, voxelSize, reusableVertices, reusableTriangles, reusableNormals, reusableUVs);
+                        processedVoxels++;
+                    }
 
         if (!mesh) mesh = new Mesh { name = $"VoxelMesh_{shapeType}" };
         mesh.Clear();
+
         if (reusableVertices.Count > 0)
         {
             mesh.vertices = reusableVertices.ToArray();
@@ -256,13 +290,31 @@ public class CubeCarvingSystem : MonoBehaviour
             mesh.normals = reusableNormals.ToArray();
             mesh.uv = reusableUVs.ToArray();
             mesh.RecalculateBounds();
+
+            Debug.Log($"GenerateMesh 完成 - 處理了 {processedVoxels} 個 voxels, 生成 {reusableVertices.Count} 個頂點, {reusableTriangles.Count / 3} 個三角形");
         }
+        else
+        {
+            Debug.LogWarning("GenerateMesh: 沒有生成任何頂點！");
+        }
+
         meshFilter.mesh = mesh;
+
+        // 立即更新渲染器
+        if (meshRenderer)
+        {
+            meshRenderer.enabled = false;
+            meshRenderer.enabled = true;
+        }
+
         if (meshCollider && reusableVertices.Count > 0)
         {
             meshCollider.sharedMesh = null;
             StartCoroutine(UpdateMeshColliderNextFrame());
         }
+
+        // 更新最後網格更新時間
+        lastMeshUpdateTime = Time.time;
     }
 
     IEnumerator UpdateMeshColliderNextFrame()
@@ -392,6 +444,117 @@ public class CubeCarvingSystem : MonoBehaviour
         }
     }
 
+    public Vector2 WorldPointToUV(Vector3 worldPoint, out FaceDirection hitFace)
+    {
+        Vector3 localPoint = transform.InverseTransformPoint(worldPoint);
+        Vector3 normalizedPoint = localPoint / cubeSize;
+        Vector3 uvPoint = normalizedPoint + Vector3.one * 0.5f;
+        hitFace = GetFaceFromLocalPoint(localPoint);
+        Vector2 uv = CalculateUVFromFace(uvPoint, hitFace);
+        return uv;
+    }
+
+    private FaceDirection GetFaceFromLocalPoint(Vector3 localPoint)
+    {
+        Vector3 abs = new Vector3(Mathf.Abs(localPoint.x), Mathf.Abs(localPoint.y), Mathf.Abs(localPoint.z));
+
+        if (abs.y >= abs.x && abs.y >= abs.z)
+        {
+            return localPoint.y > 0 ? FaceDirection.Up : FaceDirection.Down;
+        }
+        else if (abs.x >= abs.y && abs.x >= abs.z)
+        {
+            return localPoint.x > 0 ? FaceDirection.Right : FaceDirection.Left;
+        }
+        else
+        {
+            return localPoint.z > 0 ? FaceDirection.Forward : FaceDirection.Back;
+        }
+    }
+
+    private Vector2 CalculateUVFromFace(Vector3 uvPoint, FaceDirection face)
+    {
+        switch (face)
+        {
+            case FaceDirection.Up:
+            case FaceDirection.Down:
+                return new Vector2(uvPoint.x, uvPoint.z);
+
+            case FaceDirection.Left:
+            case FaceDirection.Right:
+                return new Vector2(uvPoint.z, uvPoint.y);
+
+            case FaceDirection.Forward:
+            case FaceDirection.Back:
+                return new Vector2(uvPoint.x, uvPoint.y);
+
+            default:
+                return Vector2.zero;
+        }
+    }
+
+    public Vector2 GetUnwrappedUV(Vector3 worldPoint)
+    {
+        FaceDirection face;
+        Vector2 baseUV = WorldPointToUV(worldPoint, out face);
+
+        if (uvMode == UVMode.Continuous)
+        {
+            return baseUV;
+        }
+        else
+        {
+            return ConvertToUnwrappedUV(baseUV, face);
+        }
+    }
+
+    private Vector2 ConvertToUnwrappedUV(Vector2 baseUV, FaceDirection face)
+    {
+        UVRegion region;
+        float pad = uvPadding;
+
+        switch (face)
+        {
+            case FaceDirection.Up:
+                region = new UVRegion(new Vector2(0f + pad, 0f + pad), new Vector2(1f / 3f - 2 * pad, 1f / 2f - 2 * pad));
+                break;
+            case FaceDirection.Down:
+                region = new UVRegion(new Vector2(1f / 3f + pad, 0f + pad), new Vector2(1f / 3f - 2 * pad, 1f / 2f - 2 * pad));
+                break;
+            case FaceDirection.Forward:
+                region = new UVRegion(new Vector2(2f / 3f + pad, 0f + pad), new Vector2(1f / 3f - 2 * pad, 1f / 2f - 2 * pad));
+                break;
+            case FaceDirection.Back:
+                region = new UVRegion(new Vector2(0f + pad, 1f / 2f + pad), new Vector2(1f / 3f - 2 * pad, 1f / 2f - 2 * pad));
+                break;
+            case FaceDirection.Left:
+                region = new UVRegion(new Vector2(1f / 3f + pad, 1f / 2f + pad), new Vector2(1f / 3f - 2 * pad, 1f / 2f - 2 * pad));
+                break;
+            case FaceDirection.Right:
+                region = new UVRegion(new Vector2(2f / 3f + pad, 1f / 2f + pad), new Vector2(1f / 3f - 2 * pad, 1f / 2f - 2 * pad));
+                break;
+            default:
+                region = new UVRegion(Vector2.zero, Vector2.one);
+                break;
+        }
+
+        return region.offset + Vector2.Scale(baseUV, region.size);
+    }
+
+    public bool IsPointOnSurface(Vector3 worldPoint, float tolerance = 0.01f)
+    {
+        Vector3 localPoint = transform.InverseTransformPoint(worldPoint);
+        Vector3 abs = new Vector3(Mathf.Abs(localPoint.x), Mathf.Abs(localPoint.y), Mathf.Abs(localPoint.z));
+        float halfSize = cubeSize * 0.5f;
+
+        return (Mathf.Abs(abs.x - halfSize) < tolerance ||
+                Mathf.Abs(abs.y - halfSize) < tolerance ||
+                Mathf.Abs(abs.z - halfSize) < tolerance) &&
+               abs.x <= halfSize + tolerance &&
+               abs.y <= halfSize + tolerance &&
+               abs.z <= halfSize + tolerance;
+    }
+
     public UVMode GetUVMode() => uvMode;
 
     public FaceDirection GetFaceDirection(Vector3 normal)
@@ -423,15 +586,38 @@ public class CubeCarvingSystem : MonoBehaviour
     public void SetParameters(float newCubeSize, int newGridSize) => SetParameters(newCubeSize, newGridSize, VoxelShape.Cube);
     public void ResetVoxels() { InitializeVoxels(); GenerateMesh(); }
 
-    public ModelData GetCurrentModelData() => new ModelData
+    public ModelData GetCurrentModelData()
     {
-        filename = gameObject.name,
-        shapeType = shapeType.ToString(),
-        position = transform.position,
-        rotation = transform.eulerAngles,
-        scale = transform.localScale,
-        timestamp = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
-    };
+        DualMaterialManager dualManager = GetComponent<DualMaterialManager>();
+        bool hasTexture = false;
+        string textureName = "";
+        Color currentColor = Color.white;
+
+        if (dualManager)
+        {
+            hasTexture = dualManager.IsInTextureMode();
+            if (hasTexture && dualManager.GetCurrentTexture())
+                textureName = dualManager.GetCurrentTexture().name;
+            currentColor = dualManager.GetCurrentColor();
+        }
+        else
+        {
+            MeshRenderer renderer = GetComponent<MeshRenderer>();
+            if (renderer && renderer.material)
+                currentColor = renderer.material.color;
+        }
+
+        return new ModelData(
+            gameObject.name,
+            shapeType.ToString(),
+            transform.position,
+            transform.eulerAngles,
+            transform.localScale,
+            currentColor,
+            hasTexture,
+            textureName
+        );
+    }
 
     public void NotifyModelStatUpdate()
     {
@@ -440,6 +626,282 @@ public class CubeCarvingSystem : MonoBehaviour
         {
             ModelData currentData = GetCurrentModelData();
             modelStat.SetModelData(currentData);
+        }
+    }
+
+    public ModelState GetCurrentModelState()
+    {
+        DualMaterialManager dualManager = GetComponent<DualMaterialManager>();
+
+        ModelState state = new ModelState
+        {
+            position = transform.position,
+            rotation = transform.eulerAngles,
+            scale = transform.localScale,
+            color = Color.white,
+            hasTexture = false,
+            texture = null,
+            shapeType = shapeType,
+            gridSize = gridSize,
+            voxelData = CloneVoxelArray()
+        };
+
+        if (dualManager)
+        {
+            state.hasTexture = dualManager.IsInTextureMode();
+            state.texture = dualManager.GetCurrentTexture();
+            state.color = dualManager.GetCurrentColor();
+        }
+        else
+        {
+            MeshRenderer renderer = GetComponent<MeshRenderer>();
+            if (renderer && renderer.material)
+                state.color = renderer.material.color;
+        }
+
+        return state;
+    }
+
+    public void UpdateModelInfo(Vector3 position, Vector3 rotation, Vector3 scale, Color color, bool hasTexture = false, Texture2D texture = null)
+    {
+        transform.position = position;
+        transform.rotation = Quaternion.Euler(rotation);
+        transform.localScale = scale;
+
+        DualMaterialManager dualManager = GetComponent<DualMaterialManager>();
+        if (dualManager)
+        {
+            if (hasTexture && texture)
+            {
+                dualManager.SetTextureMode(texture);
+                dualManager.SetColor(color);
+            }
+            else
+            {
+                dualManager.SetPaintMode();
+                dualManager.SetColor(color);
+            }
+        }
+
+        NotifyModelStatUpdate();
+    }
+
+    public void SaveCurrentState()
+    {
+        savedState = GetCurrentModelState();
+        hasSavedState = true;
+    }
+
+    public void CommitCurrentState()
+    {
+        SaveCurrentState();
+    }
+
+    public void RevertToSavedState()
+    {
+        if (!hasSavedState) return;
+
+        transform.position = savedState.position;
+        transform.rotation = Quaternion.Euler(savedState.rotation);
+        transform.localScale = savedState.scale;
+
+        shapeType = savedState.shapeType;
+        gridSize = savedState.gridSize;
+
+        if (savedState.voxelData != null)
+        {
+            voxels = CloneVoxelArray(savedState.voxelData);
+            GenerateMesh();
+        }
+
+        DualMaterialManager dualManager = GetComponent<DualMaterialManager>();
+        if (dualManager)
+        {
+            if (savedState.hasTexture && savedState.texture)
+            {
+                dualManager.SetTextureMode(savedState.texture);
+                dualManager.SetColor(savedState.color);
+            }
+            else
+            {
+                dualManager.SetPaintMode();
+                dualManager.SetColor(savedState.color);
+            }
+        }
+
+        NotifyModelStatUpdate();
+    }
+
+    private bool[,,] CloneVoxelArray(bool[,,] source = null)
+    {
+        bool[,,] sourceArray = source ?? voxels;
+        if (sourceArray == null) return null;
+
+        int xSize = sourceArray.GetLength(0);
+        int ySize = sourceArray.GetLength(1);
+        int zSize = sourceArray.GetLength(2);
+
+        bool[,,] clone = new bool[xSize, ySize, zSize];
+
+        for (int x = 0; x < xSize; x++)
+            for (int y = 0; y < ySize; y++)
+                for (int z = 0; z < zSize; z++)
+                    clone[x, y, z] = sourceArray[x, y, z];
+
+        return clone;
+    }
+
+
+    public void SetVoxelData(bool[,,] newVoxelData)
+    {
+        if (newVoxelData == null)
+        {
+            Debug.LogWarning("嘗試設定空的 voxel 資料");
+            return;
+        }
+
+        int xSize = newVoxelData.GetLength(0);
+        int ySize = newVoxelData.GetLength(1);
+        int zSize = newVoxelData.GetLength(2);
+
+        // 清空緩存的網格資料
+        reusableVertices.Clear();
+        reusableTriangles.Clear();
+        reusableNormals.Clear();
+        reusableUVs.Clear();
+
+        // 檢查維度是否匹配當前的 gridSize
+        if (xSize != gridSize || ySize != gridSize || zSize != gridSize)
+        {
+            Debug.LogWarning($"Voxel 資料維度不匹配。期望: {gridSize}x{gridSize}x{gridSize}, 實際: {xSize}x{ySize}x{zSize}");
+
+            // 如果維度不同，調整 gridSize
+            gridSize = Mathf.Max(xSize, ySize, zSize);
+
+            // 重新設定 Capacity（安全地）
+            int newEstimatedSize = gridSize * gridSize * 24;
+            reusableVertices.Capacity = Mathf.Max(reusableVertices.Count, newEstimatedSize);
+            reusableTriangles.Capacity = Mathf.Max(reusableTriangles.Count, newEstimatedSize * 6);
+            reusableNormals.Capacity = Mathf.Max(reusableNormals.Count, newEstimatedSize);
+            reusableUVs.Capacity = Mathf.Max(reusableUVs.Count, newEstimatedSize);
+        }
+
+        // 直接設定 voxels 陣列
+        voxels = CloneVoxelArray(newVoxelData);
+
+        // 立即重新生成網格 - 這是關鍵！
+        GenerateMesh();
+
+        // 更新碰撞器
+        if (meshCollider && mesh)
+        {
+            meshCollider.sharedMesh = null;
+            StartCoroutine(UpdateMeshColliderDelayed());
+        }
+
+        // 更新模型狀態
+        NotifyModelStatUpdate();
+
+        // 強制更新物理和渲染
+        if (meshRenderer && meshFilter)
+        {
+            meshFilter.mesh = mesh;
+            meshRenderer.enabled = false;
+            meshRenderer.enabled = true;
+        }
+
+        // 除錯：確認設定後的狀態
+        int activeVoxels = 0;
+        for (int x = 0; x < gridSize; x++)
+            for (int y = 0; y < gridSize; y++)
+                for (int z = 0; z < gridSize; z++)
+                    if (voxels[x, y, z]) activeVoxels++;
+
+        Debug.Log($"SetVoxelData 完成 - 維度: {gridSize}x{gridSize}x{gridSize}, 活躍 voxels: {activeVoxels}");
+        Debug.Log($"網格頂點數: {mesh?.vertexCount ?? 0}, 三角形數: {mesh?.triangles?.Length / 3 ?? 0}");
+    }
+
+    private IEnumerator UpdateMeshColliderDelayed()
+    {
+        yield return null;
+        yield return null;
+
+        if (meshCollider && mesh)
+        {
+            meshCollider.sharedMesh = mesh;
+            meshCollider.isTrigger = false;
+        }
+    }
+
+    /// <summary>
+    /// 取得當前的 voxel 資料（供外部存取）
+    /// </summary>
+    /// <returns>當前的 voxel 資料副本</returns>
+    public bool[,,] GetVoxelData()
+    {
+        return CloneVoxelArray(voxels);
+    }
+
+    /// <summary>
+    /// 檢查是否有雕刻痕跡
+    /// </summary>
+    /// <returns>如果有體素被移除則返回 true</returns>
+    public bool HasCarvingMarks()
+    {
+        if (voxels == null) return false;
+
+        int totalVoxels = gridSize * gridSize * gridSize;
+        int activeVoxels = 0;
+
+        for (int x = 0; x < gridSize; x++)
+        {
+            for (int y = 0; y < gridSize; y++)
+            {
+                for (int z = 0; z < gridSize; z++)
+                {
+                    if (voxels[x, y, z])
+                        activeVoxels++;
+                }
+            }
+        }
+
+        // 如果不是所有體素都存在，表示有雕刻痕跡
+        // 這裡需要根據 shapeType 來判斷完整形狀應該有多少體素
+        return activeVoxels < GetExpectedVoxelCount();
+    }
+
+    /// <summary>
+    /// 取得完整形狀預期的體素數量
+    /// </summary>
+    private int GetExpectedVoxelCount()
+    {
+        switch (shapeType)
+        {
+            case VoxelShape.Cube:
+                return gridSize * gridSize * gridSize;
+
+            case VoxelShape.Sphere:
+                // 簡化計算，實際上球體的體素數量會根據半徑變化
+                Vector3 center = new Vector3(gridSize * 0.5f, gridSize * 0.5f, gridSize * 0.5f);
+                float radius = gridSize * 0.4f;
+                int count = 0;
+                for (int x = 0; x < gridSize; x++)
+                    for (int y = 0; y < gridSize; y++)
+                        for (int z = 0; z < gridSize; z++)
+                        {
+                            Vector3 pos = new Vector3(x + 0.5f, y + 0.5f, z + 0.5f);
+                            if (Vector3.Distance(pos, center) <= radius)
+                                count++;
+                        }
+                return count;
+
+            case VoxelShape.Capsule:
+            case VoxelShape.Cylinder:
+                // 簡化計算
+                return Mathf.RoundToInt(gridSize * gridSize * gridSize * 0.7f);
+
+            default:
+                return gridSize * gridSize * gridSize;
         }
     }
 }

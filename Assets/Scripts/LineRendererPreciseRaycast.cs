@@ -29,7 +29,7 @@ public class LineRendererPreciseRaycast : MonoBehaviour
     {
         Ray ray = arCamera.ScreenPointToRay(screenPosition);
 
-        // 先檢查LineRenderer物件
+        // 檢查LineRenderer物件
         LineRenderer[] allLineRenderers = FindObjectsOfType<LineRenderer>();
         foreach (LineRenderer lr in allLineRenderers)
         {
@@ -37,6 +37,18 @@ public class LineRendererPreciseRaycast : MonoBehaviour
             {
                 Destroy(lr.gameObject);
                 Debug.Log($"刪除了LineRenderer物件: {lr.gameObject.name}");
+                return;
+            }
+        }
+
+        // 檢查ParticleSystem物件
+        ParticleSystem[] allParticleSystems = FindObjectsOfType<ParticleSystem>();
+        foreach (ParticleSystem ps in allParticleSystems)
+        {
+            if (IsRayHittingObject(ray, ps.gameObject))
+            {
+                Destroy(ps.gameObject);
+                Debug.Log($"刪除了ParticleSystem物件: {ps.gameObject.name}");
                 return;
             }
         }
@@ -59,7 +71,7 @@ public class LineRendererPreciseRaycast : MonoBehaviour
 
     bool IsRayHittingObject(Ray ray, GameObject obj)
     {
-        // 使用Physics.Raycast檢測碰撞器
+        // 使用Physics.Raycast檢測碰撞體
         RaycastHit hit;
         if (Physics.Raycast(ray, out hit))
         {
@@ -68,7 +80,6 @@ public class LineRendererPreciseRaycast : MonoBehaviour
         return false;
     }
 
-    // ... 其他方法保持不變
     bool IsRayHittingLineRenderer(Ray ray, LineRenderer lineRenderer)
     {
         if (lineRenderer.positionCount < 2) return false;
