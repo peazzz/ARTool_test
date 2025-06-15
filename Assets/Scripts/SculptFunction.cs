@@ -367,9 +367,9 @@ public class SculptFunction : MonoBehaviour
     {
         SetupSlider(MainScaleSlider, 0.1f, 3f, 1f, OnMainScaleChanged);
         SetupSlider(HeightSlider, -1f, 1f, 0f, OnHeightChanged);
-        SetupSlider(ScaleXSlider, 0.1f, 3f, 1f, OnScaleXSliderChanged);
-        SetupSlider(ScaleYSlider, 0.1f, 3f, 1f, OnScaleYSliderChanged);
-        SetupSlider(ScaleZSlider, 0.1f, 3f, 1f, OnScaleZSliderChanged);
+        SetupSlider(ScaleXSlider, 0.01f, 3f, 1f, OnScaleXSliderChanged);
+        SetupSlider(ScaleYSlider, 0.01f, 3f, 1f, OnScaleYSliderChanged);
+        SetupSlider(ScaleZSlider, 0.01f, 3f, 1f, OnScaleZSliderChanged);
         SetupSlider(RotationXSlider, 0f, 360f, 0f, OnRotationXSliderChanged);
         SetupSlider(RotationYSlider, 0f, 360f, 0f, OnRotationYSliderChanged);
         SetupSlider(RotationZSlider, 0f, 360f, 0f, OnRotationZSliderChanged);
@@ -586,7 +586,7 @@ public class SculptFunction : MonoBehaviour
         Vector3 spawnPosition = GetSpawnPosition();
         GameObject newCarvingSystem = Instantiate(cubeCarvingSystemPrefab, spawnPosition, Quaternion.identity);
         newCarvingSystem.transform.localScale = scale;
-        newCarvingSystem.name = $"CubeCarvingSystem_{shapeType}{(isPreview ? "_Preview" : "_Final")}";
+        newCarvingSystem.name = $"{shapeType}{(isPreview ? "_Preview" : "_Final")}";
 
         CubeCarvingSystem carvingSystem = newCarvingSystem.GetComponent<CubeCarvingSystem>();
         if (carvingSystem)
@@ -1201,7 +1201,9 @@ public class SculptFunction : MonoBehaviour
         uiManager.inSculpt = false;
         uiManager.lightshipNavMeshRenderer.enabled = false;
         uiManager.ClearModeButton.SetActive(true);
-        uiManager.isInColorPage = false;
+        //uiManager.isInColorPage = false;
+        //uiManager.ColorPage1.SetActive(false);
+        //uiManager.ScalePageSelect();
     }
 
     void ResetAllParameters()

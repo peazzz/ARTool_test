@@ -6,7 +6,7 @@ using Niantic.Lightship.AR.NavigationMesh;
 public class UIManager : MonoBehaviour
 {
     public RectTransform FounctionUI_RT, HandleArrow_RT;
-    public GameObject BackButton, FounctionUI, ClearModeButton, ClearModeObject, ClearModeHint;
+    public GameObject BackButton, FounctionUI, ClearModeButton, ClearModeObject, ClearModeHint, LoadButton;
     public GameObject UIHome, SculptPanel1, SculptPanel2, DrawPanel1, DrawPanel2, BrushPanel, BrushPanel2D;
     public GameObject ScalePage, RotationPage, OtherPage, ColorPage1;
     public Button ScalePageButton, RotationPageButton, OtherPageButton;
@@ -104,7 +104,7 @@ public class UIManager : MonoBehaviour
         SetUIVisibility(UI_on);
     }
 
-    void ScalePageSelect()
+    public void ScalePageSelect()
     {
         ScalePage.SetActive(true); RotationPage.SetActive(false); OtherPage.SetActive(false);
         ScalePageButton.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);

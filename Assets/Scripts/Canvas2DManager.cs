@@ -768,6 +768,8 @@ public class Canvas2DManager : MonoBehaviour
 
     public void Show2DCanvas_Auto()
     {
+        uiManager.LoadButton.SetActive(false);
+
         if (isCurrentlyTablet)
         {
             Show2DCanvas_Tablet();
@@ -1217,6 +1219,7 @@ public class Canvas2DManager : MonoBehaviour
         uiManager.UIHome?.SetActive(true);
         uiManager.BackButton?.SetActive(false);
         uiManager.ClearModeButton.SetActive(true);
+        uiManager.LoadButton.SetActive(true);
 
         // 完成時清除歷史記錄
         ClearHistory();

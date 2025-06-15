@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using System.IO;
 using System;
+using SimpleFileBrowser;
 
 [System.Serializable]
 public class SavedObjectData
@@ -86,6 +87,8 @@ public class SavedObjectData
 
 public class ObjectSaveLoadSystem : MonoBehaviour
 {
+    public Camera cam;
+
     [Header("UI References")]
     public Button saveButton;
     public Button loadButton;
@@ -126,6 +129,7 @@ public class ObjectSaveLoadSystem : MonoBehaviour
     {
         SetupButtonEvents();
         CreateSaveDirectory();
+        SetupFileBrowser();
     }
 
     private void SetupButtonEvents()
@@ -134,7 +138,48 @@ public class ObjectSaveLoadSystem : MonoBehaviour
             saveButton.onClick.AddListener(SaveCurrentSelectedObject);
 
         if (loadButton != null)
-            loadButton.onClick.AddListener(OpenLoadInterface);
+            loadButton.onClick.AddListener(ShowLoadFileDialog);
+    }
+
+    private void SetupFileBrowser()
+    {
+        // 設定 File Browser 的篩選器，只顯示 JSON 檔案
+        FileBrowser.SetFilters(true, new FileBrowser.Filter("JSON Files", ".json"));
+
+        // 設定預設路徑為您的存檔目錄
+        string defaultPath = GetObjectsSavePath();
+        if (Directory.Exists(defaultPath))
+        {
+            FileBrowser.AddQuickLink("ARTool Objects", defaultPath, null);
+        }
+
+        // 設定其他選項
+        FileBrowser.ShowHiddenFiles = false;
+        FileBrowser.SingleClickMode = false;
+    }
+
+    public void ShowLoadFileDialog()
+    {
+        string initialPath = GetObjectsSavePath();
+
+        FileBrowser.ShowLoadDialog(
+            onSuccess: (paths) => {
+                if (paths.Length > 0)
+                {
+                    LoadObjectFromFile(paths[0]);
+                }
+            },
+            onCancel: () => {
+                if (enableDebugLogs)
+                    Debug.Log("取消載入檔案");
+            },
+            pickMode: FileBrowser.PickMode.Files,
+            allowMultiSelection: false,
+            initialPath: initialPath,
+            initialFilename: null,
+            title: "選擇要載入的物件",
+            loadButtonText: "載入"
+        );
     }
 
     private void CreateSaveDirectory()
@@ -539,7 +584,7 @@ public class ObjectSaveLoadSystem : MonoBehaviour
 
             // 設定基本屬性
             newObject.name = loadData.objectInfo.name;
-            newObject.transform.position = loadData.transform.position;
+            newObject.transform.position = cam.transform.position + cam.transform.forward * 1.5f;
             newObject.transform.rotation = Quaternion.Euler(loadData.transform.rotation);
             newObject.transform.localScale = loadData.transform.scale;
 
