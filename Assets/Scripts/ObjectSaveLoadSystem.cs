@@ -145,30 +145,19 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         FileBrowser.SetFilters(true, new FileBrowser.Filter("JSON Files", ".json"));
 
         string defaultPath = GetObjectsSavePath();
-
-        if (!Directory.Exists(defaultPath))
-        {
-            try
-            {
-                Directory.CreateDirectory(defaultPath);
-            }
-            catch (System.Exception e)
-            {
-                Debug.LogError($"Failed to create directory: {e.Message}");
-                defaultPath = Application.persistentDataPath;
-            }
-        }
+        CreateSaveDirectory();
 
         if (Directory.Exists(defaultPath))
         {
             FileBrowser.AddQuickLink("ARTool Objects", defaultPath, null);
         }
 
+#if UNITY_IOS
+        FileBrowser.ShowHiddenFiles = false;
+        FileBrowser.SingleClickMode = true;
+#else
         FileBrowser.ShowHiddenFiles = false;
         FileBrowser.SingleClickMode = false;
-
-#if UNITY_IOS && !UNITY_EDITOR
-    FileBrowser.SetDefaultFilter(".json");
 #endif
     }
 
@@ -214,13 +203,40 @@ public class ObjectSaveLoadSystem : MonoBehaviour
     private string GetObjectsSavePath()
     {
 #if UNITY_IOS && !UNITY_EDITOR
-    return Path.Combine(Application.persistentDataPath, "ARTool", "Objects");
+        string basePath = Application.persistentDataPath;
 #elif UNITY_ANDROID && !UNITY_EDITOR
-    return Path.Combine(Application.persistentDataPath, "ARTool", "Objects");
+        string basePath = Application.persistentDataPath;
 #else
-        string documentsPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments);
-        return Path.Combine(documentsPath, "ARTool", "Objects");
+        string basePath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments);
 #endif
+
+        return Path.Combine(basePath, "ARTool", "Object");
+    }
+
+    private bool CheckFilePermissions()
+    {
+#if UNITY_IOS && !UNITY_EDITOR
+        string testPath = Application.persistentDataPath;
+        return Directory.Exists(testPath) || CanCreateDirectory(testPath);
+#else
+        return true;
+#endif
+    }
+
+    private bool CanCreateDirectory(string path)
+    {
+        try
+        {
+            if (!Directory.Exists(path))
+            {
+                Directory.CreateDirectory(path);
+            }
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public void SaveCurrentSelectedObject()
@@ -248,15 +264,20 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         try
         {
             SavedObjectData saveData = CollectObjectData(targetObject);
-
             string jsonData = JsonUtility.ToJson(saveData, true);
-
             string fileName = GenerateUniqueFileName(saveData.objectInfo.name);
             string filePath = Path.Combine(GetObjectsSavePath(), fileName);
 
             File.WriteAllText(filePath, jsonData);
 
-            ShowSaveStatus($"{fileName}", true);
+            if (File.Exists(filePath))
+            {
+                ShowSaveStatus($"{fileName}", true);
+            }
+            else
+            {
+                ShowSaveStatus("Fall", false);
+            }
         }
         catch (System.Exception e)
         {
@@ -765,18 +786,9 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         try
         {
             string objectsPath = GetObjectsSavePath();
-
             if (Directory.Exists(objectsPath))
             {
-                string[] files = Directory.GetFiles(objectsPath, "*.json");
-
-                return files;
-            }
-            else
-            {
-                string[] fallbackFiles = Directory.GetFiles(Application.persistentDataPath, "*.json");
-
-                return fallbackFiles;
+                return Directory.GetFiles(objectsPath, "*.json");
             }
         }
         catch (System.Exception e)
@@ -785,5 +797,23 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         }
 
         return new string[0];
+    }
+
+    public void DebugListFiles()
+    {
+        string path = GetObjectsSavePath();
+        if (Directory.Exists(path))
+        {
+            string[] files = Directory.GetFiles(path, "*.json");
+            Debug.Log($"Found {files.Length} JSON files:");
+            foreach (string file in files)
+            {
+                Debug.Log($"- {Path.GetFileName(file)}");
+            }
+        }
+        else
+        {
+            Debug.Log($"Directory does not exist: {path}");
+        }
     }
 }

@@ -4,19 +4,6 @@ using UnityEngine;
 using UnityEngine.UI;
 using System.IO;
 
-#if UNITY_IOS && !UNITY_EDITOR
-using System.Runtime.InteropServices;
-
-[DllImport("__Internal")]
-private static extern void SaveImageToIOSPhotoAlbum(byte[] imageData, int imageDataLength, string fileName);
-
-[DllImport("__Internal")]
-private static extern bool HasPhotoLibraryPermission();
-
-[DllImport("__Internal")]
-private static extern void RequestPhotoLibraryPermission();
-#endif
-
 public class Canvas2DManager : MonoBehaviour
 {
     [Header("2D Canvas References")]
@@ -80,6 +67,7 @@ public class Canvas2DManager : MonoBehaviour
     [Header("Image Save System")]
     public bool autoSaveOnFinish = true;
     public string saveFileName = "ARTool";
+    public string albumName = "ARTool";
     public ImageFormat saveFormat = ImageFormat.PNG;
     [Range(50, 100)]
     public int jpegQuality = 90;
@@ -114,14 +102,59 @@ public class Canvas2DManager : MonoBehaviour
 
     private bool isCurrentlyTablet = false;
 
-    #region Image Save System
+    #region Image Save System - ¨Ï¥Î Native Gallery
 
     public void SaveImageToDevice()
     {
-        StartCoroutine(SaveImageCoroutine());
+        StartCoroutine(SaveImageToGalleryCoroutine());
     }
 
-    private IEnumerator SaveImageCoroutine()
+    private IEnumerator SaveImageToGalleryCoroutine()
+    {
+        ShowSaveStatus("", true);
+
+        try
+        {
+            ForceTextureUpdate();
+
+            Texture2D saveTexture = new Texture2D(canvasWidth, canvasHeight, TextureFormat.RGBA32, false);
+            saveTexture.SetPixels(drawingTexture.GetPixels());
+            saveTexture.Apply();
+
+            string fileName = GenerateUniqueFileName(saveFileName, GetFileExtension());
+
+            NativeGallery.SaveImageToGallery(saveTexture, albumName, fileName, (success, path) =>
+            {
+                if (success)
+                {
+                    ShowSaveStatus("", true);
+                }
+                else
+                {
+                    ShowSaveStatus("", false);
+                }
+
+                StartCoroutine(HideStatusAfterDelay(2f));
+            });
+
+            DestroyImmediate(saveTexture);
+        }
+        catch (System.Exception e)
+        {
+            ShowSaveStatus("", false);
+            StartCoroutine(HideStatusAfterDelay(2f));
+        }
+
+        yield break;
+    }
+
+    private IEnumerator HideStatusAfterDelay(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        HideSaveStatus();
+    }
+
+    private IEnumerator SaveImageToLocalCoroutine()
     {
         ForceTextureUpdate();
 
@@ -132,17 +165,15 @@ public class Canvas2DManager : MonoBehaviour
             saveTexture.Apply();
 
             byte[] imageData;
-            string fileExtension;
+            string fileExtension = GetFileExtension();
 
             if (saveFormat == ImageFormat.PNG)
             {
                 imageData = saveTexture.EncodeToPNG();
-                fileExtension = ".png";
             }
             else
             {
                 imageData = saveTexture.EncodeToJPG(jpegQuality);
-                fileExtension = ".jpg";
             }
 
             string fileName = GenerateUniqueFileName(saveFileName, fileExtension);
@@ -158,6 +189,11 @@ public class Canvas2DManager : MonoBehaviour
 
         yield return new WaitForSeconds(2f);
         HideSaveStatus();
+    }
+
+    private string GetFileExtension()
+    {
+        return saveFormat == ImageFormat.PNG ? ".png" : ".jpg";
     }
 
     private bool SaveToDevice(byte[] imageData, string fileName)
@@ -217,28 +253,14 @@ public class Canvas2DManager : MonoBehaviour
     {
         try
         {
-#if UNITY_IOS && !UNITY_EDITOR
-        if (!HasPhotoLibraryPermission())
-        {
-            RequestPhotoLibraryPermission();
-            ShowSaveStatus("Need Photo Permission", false);
-            return false;
-        }
-
-        SaveImageToIOSPhotoAlbum(imageData, imageData.Length, fileName);
-        
-        ShowSaveStatus($"Saved to Photos: {fileName}", true);
-        return true;
-#else
             string tempPath = Path.Combine(Application.persistentDataPath, fileName);
             File.WriteAllBytes(tempPath, imageData);
 
             return true;
-#endif
         }
         catch (System.Exception e)
         {
-            ShowSaveStatus("Save Failed", false);
+            Debug.LogError($"{e.Message}");
             return false;
         }
     }
@@ -300,6 +322,11 @@ public class Canvas2DManager : MonoBehaviour
     public void ManualSaveImage()
     {
         SaveImageToDevice();
+    }
+
+    public void SaveImageToLocal()
+    {
+        StartCoroutine(SaveImageToLocalCoroutine());
     }
 
     #endregion
