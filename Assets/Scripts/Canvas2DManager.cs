@@ -4,6 +4,19 @@ using UnityEngine;
 using UnityEngine.UI;
 using System.IO;
 
+#if UNITY_IOS && !UNITY_EDITOR
+using System.Runtime.InteropServices;
+
+[DllImport("__Internal")]
+private static extern void SaveImageToIOSPhotoAlbum(byte[] imageData, int imageDataLength, string fileName);
+
+[DllImport("__Internal")]
+private static extern bool HasPhotoLibraryPermission();
+
+[DllImport("__Internal")]
+private static extern void RequestPhotoLibraryPermission();
+#endif
+
 public class Canvas2DManager : MonoBehaviour
 {
     [Header("2D Canvas References")]
@@ -204,14 +217,28 @@ public class Canvas2DManager : MonoBehaviour
     {
         try
         {
+#if UNITY_IOS && !UNITY_EDITOR
+        if (!HasPhotoLibraryPermission())
+        {
+            RequestPhotoLibraryPermission();
+            ShowSaveStatus("Need Photo Permission", false);
+            return false;
+        }
+
+        SaveImageToIOSPhotoAlbum(imageData, imageData.Length, fileName);
+        
+        ShowSaveStatus($"Saved to Photos: {fileName}", true);
+        return true;
+#else
             string tempPath = Path.Combine(Application.persistentDataPath, fileName);
             File.WriteAllBytes(tempPath, imageData);
 
             return true;
+#endif
         }
         catch (System.Exception e)
         {
-            Debug.LogError($"{e.Message}");
+            ShowSaveStatus("Save Failed", false);
             return false;
         }
     }

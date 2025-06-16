@@ -145,6 +145,20 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         FileBrowser.SetFilters(true, new FileBrowser.Filter("JSON Files", ".json"));
 
         string defaultPath = GetObjectsSavePath();
+
+        if (!Directory.Exists(defaultPath))
+        {
+            try
+            {
+                Directory.CreateDirectory(defaultPath);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Failed to create directory: {e.Message}");
+                defaultPath = Application.persistentDataPath;
+            }
+        }
+
         if (Directory.Exists(defaultPath))
         {
             FileBrowser.AddQuickLink("ARTool Objects", defaultPath, null);
@@ -152,6 +166,10 @@ public class ObjectSaveLoadSystem : MonoBehaviour
 
         FileBrowser.ShowHiddenFiles = false;
         FileBrowser.SingleClickMode = false;
+
+#if UNITY_IOS && !UNITY_EDITOR
+    FileBrowser.SetDefaultFilter(".json");
+#endif
     }
 
     public void ShowLoadFileDialog()
@@ -195,13 +213,16 @@ public class ObjectSaveLoadSystem : MonoBehaviour
 
     private string GetObjectsSavePath()
     {
+#if UNITY_IOS && !UNITY_EDITOR
+    return Path.Combine(Application.persistentDataPath, "ARTool", "Objects");
+#elif UNITY_ANDROID && !UNITY_EDITOR
+    return Path.Combine(Application.persistentDataPath, "ARTool", "Objects");
+#else
         string documentsPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments);
-        return Path.Combine(documentsPath, "ARTool", "Object");
+        return Path.Combine(documentsPath, "ARTool", "Objects");
+#endif
     }
 
-    /// <summary>
-    /// 儲存當前選擇的物件
-    /// </summary>
     public void SaveCurrentSelectedObject()
     {
         if (sculptFunction == null)
@@ -744,9 +765,18 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         try
         {
             string objectsPath = GetObjectsSavePath();
+
             if (Directory.Exists(objectsPath))
             {
-                return Directory.GetFiles(objectsPath, "*.json");
+                string[] files = Directory.GetFiles(objectsPath, "*.json");
+
+                return files;
+            }
+            else
+            {
+                string[] fallbackFiles = Directory.GetFiles(Application.persistentDataPath, "*.json");
+
+                return fallbackFiles;
             }
         }
         catch (System.Exception e)
