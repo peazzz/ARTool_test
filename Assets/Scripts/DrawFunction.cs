@@ -34,18 +34,15 @@ public class DrawFunction : MonoBehaviour
     public Slider WidthSlider, ScaleSlider, DistanceSlider, GapSlider;
     public InputField WidthInputField, ScaleInputField, DistanceInputField, GapInputField;
 
-    // 新增的Slider和InputField變數
     public Slider DistanceSlider2, GapSlider2;
     public InputField DistanceInputField2, GapInputField2;
 
-    // 粒子圖片和數量控制
     public GameObject ImageSelectorButton;
     public InputField CountInputField;
     public Material ParticleMaterial;
 
-    [Header("粒子設定")]
-    public int particleCount = 10; // 預設粒子數量
-    private Texture2D currentParticleTexture; // 當前粒子紋理
+    public int particleCount = 10;
+    private Texture2D currentParticleTexture;
 
     public Material LineMaterial;
     Vector3 anchor = new Vector3(0, 0, 0.3f);
@@ -65,7 +62,6 @@ public class DrawFunction : MonoBehaviour
     private bool textureClickEnabled = false;
     private bool hasProcessedClick = false;
     private bool isMouseDown = false;
-    private bool isTouchActive = false;
     private Vector2 lastInputPosition;
     private float inputSensitivity = 2f;
 
@@ -81,7 +77,6 @@ public class DrawFunction : MonoBehaviour
         {
             fcp.color = new Color(1, 1, 1, 1);
             LineMaterial.color = fcp.color;
-            // 同時初始化粒子材質顏色
             if (ParticleMaterial)
             {
                 ParticleMaterial.color = fcp.color;
@@ -92,7 +87,6 @@ public class DrawFunction : MonoBehaviour
 
     void InitializeParticleSettings()
     {
-        // 初始化粒子數量輸入框
         if (CountInputField)
         {
             CountInputField.text = particleCount.ToString();
@@ -123,7 +117,6 @@ public class DrawFunction : MonoBehaviour
         FinishButton?.onClick.AddListener(OnFinishButtonClicked);
         ClearAllButton?.onClick.AddListener(ClearScreen);
 
-        // 新增圖片選擇按鈕事件
         if (ImageSelectorButton)
         {
             ImageSelectorButton.GetComponent<Button>().onClick.AddListener(OpenImageSelector);
@@ -135,11 +128,9 @@ public class DrawFunction : MonoBehaviour
         if (WidthSlider) { WidthSlider.value = lineWidth; WidthSlider.minValue = 0.001f; WidthSlider.maxValue = 0.1f; }
         if (ScaleSlider) { ScaleSlider.value = ParticleScale; ScaleSlider.minValue = 0.001f; ScaleSlider.maxValue = 0.1f; }
 
-        // 原始Distance和Gap Slider設定
         if (DistanceSlider) { DistanceSlider.value = cameraDistance; DistanceSlider.minValue = 0.1f; DistanceSlider.maxValue = 2.0f; }
         if (GapSlider) { GapSlider.value = gapThreshold; GapSlider.minValue = 0.001f; GapSlider.maxValue = 0.1f; }
 
-        // 新增的Slider設定（與原始Slider相同參數）
         if (DistanceSlider2) { DistanceSlider2.value = cameraDistance; DistanceSlider2.minValue = 0.1f; DistanceSlider2.maxValue = 2.0f; }
         if (GapSlider2) { GapSlider2.value = gapThreshold; GapSlider2.minValue = 0.001f; GapSlider2.maxValue = 0.1f; }
 
@@ -151,21 +142,17 @@ public class DrawFunction : MonoBehaviour
         WidthSlider?.onValueChanged.AddListener(OnWidthSliderChanged);
         ScaleSlider?.onValueChanged.AddListener(OnScaleSliderChanged);
 
-        // 原始Slider監聽器
         DistanceSlider?.onValueChanged.AddListener(OnDistanceSliderChanged);
         GapSlider?.onValueChanged.AddListener(OnGapSliderChanged);
 
-        // 新增Slider監聽器（使用相同的回調函數）
         DistanceSlider2?.onValueChanged.AddListener(OnDistanceSliderChanged);
         GapSlider2?.onValueChanged.AddListener(OnGapSliderChanged);
 
-        // 原始InputField監聽器
         WidthInputField?.onEndEdit.AddListener(OnWidthInputChanged);
         ScaleInputField?.onEndEdit.AddListener(OnScaleInputChanged);
         DistanceInputField?.onEndEdit.AddListener(OnDistanceInputChanged);
         GapInputField?.onEndEdit.AddListener(OnGapInputChanged);
 
-        // 新增InputField監聽器（使用相同的回調函數）
         DistanceInputField2?.onEndEdit.AddListener(OnDistanceInputChanged);
         GapInputField2?.onEndEdit.AddListener(OnGapInputChanged);
     }
@@ -347,7 +334,6 @@ public class DrawFunction : MonoBehaviour
             float distance = Vector3.Distance(hit.point, lastParticlePosition);
             if (distance >= gapThreshold)
             {
-                // 使用 hit.point 確保粒子創建在物件表面
                 CreateParticleAtPosition(hit.point);
                 lastParticlePosition = hit.point;
             }
@@ -475,16 +461,13 @@ public class DrawFunction : MonoBehaviour
             float t = (float)i / particleSteps;
             Vector3 particlePosition = Vector3.Lerp(startPoint, endPoint, t);
 
-            // 在TextureMode下，確保每個粒子都貼合表面
             if (TextureMode)
             {
-                // 對每個插值點進行射線檢測，確保粒子貼合表面
-                Vector3 rayStart = particlePosition + Vector3.up * 1f; // 從上方開始射線
+                Vector3 rayStart = particlePosition + Vector3.up * 1f;
                 Ray ray = new Ray(rayStart, Vector3.down);
 
                 if (Physics.Raycast(ray, out RaycastHit hit, 2f))
                 {
-                    // 使用射線檢測到的點，並稍微偏移避免Z-fighting
                     particlePosition = hit.point + hit.normal * 0.01f;
                 }
             }
@@ -570,7 +553,6 @@ public class DrawFunction : MonoBehaviour
         { CreateParticleAtPosition(anchor); lastParticlePosition = anchor; }
     }
 
-    // 修改後的CreateParticleAtPosition方法，解決粒子碰撞問題
     void CreateParticleAtPosition(Vector3 position)
     {
         if (!particlePrefab) return;
@@ -578,20 +560,17 @@ public class DrawFunction : MonoBehaviour
         GameObject tempParticle = Instantiate(particlePrefab);
         tempParticle.transform.SetParent(linePool);
 
-        // 最終位置處理
         Vector3 finalPosition = position;
         Vector3 surfaceNormal = Vector3.up;
 
-        // 在TextureMode下，重新進行射線檢測確保準確性
         if (TextureMode)
         {
             Ray ray = arCamera.ScreenPointToRay(GetInputPosition());
             if (Physics.Raycast(ray, out RaycastHit hit, 100f))
             {
-                finalPosition = hit.point + hit.normal * 0.005f; // 更小的偏移
+                finalPosition = hit.point + hit.normal * 0.005f;
                 surfaceNormal = hit.normal;
 
-                // 讓粒子系統朝向表面法線
                 Vector3 lookDirection = -surfaceNormal;
                 tempParticle.transform.rotation = Quaternion.LookRotation(lookDirection);
             }
@@ -603,7 +582,6 @@ public class DrawFunction : MonoBehaviour
         ParticleSystem newParticleSystem = tempParticle.GetComponent<ParticleSystem>();
         if (newParticleSystem)
         {
-            // 設定主要屬性
             var main = newParticleSystem.main;
             main.startColor = ParticleMaterial ? ParticleMaterial.color : fcp.color;
             main.startSize = ParticleScale * 5f;
@@ -611,27 +589,21 @@ public class DrawFunction : MonoBehaviour
             main.startLifetime = 5.0f;
             main.simulationSpace = ParticleSystemSimulationSpace.Local;
 
-            // 根據模式調整粒子行為
             if (TextureMode)
             {
-                // TextureMode: 讓粒子緊貼表面，幾乎不移動
                 main.startSpeed = new ParticleSystem.MinMaxCurve(0f, 0.05f);
 
-                // 設定形狀 - 讓粒子在表面小範圍內發射
                 var shape = newParticleSystem.shape;
                 shape.enabled = true;
                 shape.shapeType = ParticleSystemShapeType.Circle;
                 shape.radius = 0.01f;
                 shape.radiusThickness = 1f;
 
-                // 關閉速度模組
                 var velocityOverLifetime = newParticleSystem.velocityOverLifetime;
                 velocityOverLifetime.enabled = false;
 
-                // 重力設為0
                 main.gravityModifier = 0f;
 
-                // 設定粒子朝向
                 main.startRotation3D = true;
                 main.startRotationX = 0f;
                 main.startRotationY = 0f;
@@ -639,17 +611,14 @@ public class DrawFunction : MonoBehaviour
             }
             else
             {
-                // SpaceMode: 保持原有的自由擴散效果
                 main.startSpeed = new ParticleSystem.MinMaxCurve(0f, 1f);
                 main.simulationSpace = ParticleSystemSimulationSpace.World;
                 main.gravityModifier = -0.1f;
             }
 
-            // **關鍵修正：禁用粒子碰撞**
             var collision = newParticleSystem.collision;
-            collision.enabled = false; // 完全關閉碰撞
+            collision.enabled = false;
 
-            // 設定發射器
             var emission = newParticleSystem.emission;
             emission.enabled = true;
             emission.rateOverTime = 0;
@@ -657,7 +626,6 @@ public class DrawFunction : MonoBehaviour
                 new ParticleSystem.Burst(0.0f, particleCount)
             });
 
-            // 套用自定義材質
             var renderer = newParticleSystem.GetComponent<ParticleSystemRenderer>();
             if (renderer && ParticleMaterial)
             {
@@ -672,7 +640,6 @@ public class DrawFunction : MonoBehaviour
                 particleMaterialInstance.color = ParticleMaterial.color;
             }
 
-            // 播放粒子系統
             newParticleSystem.Play();
 
             particleList.Add(newParticleSystem);
@@ -684,11 +651,10 @@ public class DrawFunction : MonoBehaviour
             Destroy(tempParticle);
         }
 
-        // 移除任何可能的碰撞器組件
         Collider[] colliders = tempParticle.GetComponentsInChildren<Collider>();
         foreach (Collider col in colliders)
         {
-            if (col.gameObject != tempParticle) continue; // 只移除粒子對象本身的碰撞器
+            if (col.gameObject != tempParticle) continue;
             Destroy(col);
         }
     }
@@ -769,36 +735,31 @@ public class DrawFunction : MonoBehaviour
         }
     }
 
-    // 粒子數量改變事件
     public void OnParticleCountChanged(string value)
     {
         if (int.TryParse(value, out int newCount))
         {
-            particleCount = Mathf.Clamp(newCount, 1, 100); // 限制範圍1-100
+            particleCount = Mathf.Clamp(newCount, 1, 100);
             CountInputField.text = particleCount.ToString();
         }
         else
         {
-            CountInputField.text = particleCount.ToString(); // 無效輸入時恢復原值
+            CountInputField.text = particleCount.ToString();
         }
     }
 
-    // 修改Distance Slider變更事件，同步更新兩個Slider
     public void OnDistanceSliderChanged(float value)
     {
         cameraDistance = value;
 
-        // 同步更新所有Distance相關UI
         SetDistanceSliderValues(value);
         SetDistanceInputFieldValues(value.ToString("F2"));
     }
 
-    // 修改Gap Slider變更事件，同步更新兩個Slider
     public void OnGapSliderChanged(float value)
     {
         gapThreshold = value;
 
-        // 同步更新所有Gap相關UI
         SetGapSliderValues(value);
         SetGapInputFieldValues(value.ToString("F3"));
     }
@@ -813,38 +774,32 @@ public class DrawFunction : MonoBehaviour
         ParticleScale = value; UpdateInputFields();
     }
 
-    // 修改Distance InputField變更事件，同步更新兩個InputField
     public void OnDistanceInputChanged(string value)
     {
         if (float.TryParse(value, out float newDistance))
         {
             cameraDistance = Mathf.Clamp(newDistance, 0.1f, 2.0f);
 
-            // 同步更新所有Distance相關UI
             SetDistanceSliderValues(cameraDistance);
             SetDistanceInputFieldValues(cameraDistance.ToString("F2"));
         }
         else
         {
-            // 輸入無效時恢復原值
             SetDistanceInputFieldValues(cameraDistance.ToString("F2"));
         }
     }
 
-    // 修改Gap InputField變更事件，同步更新兩個InputField
     public void OnGapInputChanged(string value)
     {
         if (float.TryParse(value.Trim(), out float inputValue))
         {
             gapThreshold = Mathf.Clamp(inputValue, 0.001f, 0.05f);
 
-            // 同步更新所有Gap相關UI
             SetGapSliderValues(gapThreshold);
             SetGapInputFieldValues(gapThreshold.ToString("F3"));
         }
         else
         {
-            // 輸入無效時恢復原值
             SetGapInputFieldValues(gapThreshold.ToString("F3"));
         }
     }
@@ -876,69 +831,54 @@ public class DrawFunction : MonoBehaviour
         UpdateInputFields();
     }
 
-    // 新增方法來統一設定所有相關Slider的值
     private void SetDistanceSliderValues(float value)
     {
-        // 暫時移除監聽器避免循環調用
         DistanceSlider?.onValueChanged.RemoveListener(OnDistanceSliderChanged);
         DistanceSlider2?.onValueChanged.RemoveListener(OnDistanceSliderChanged);
 
-        // 設定值
         if (DistanceSlider) DistanceSlider.value = value;
         if (DistanceSlider2) DistanceSlider2.value = value;
 
-        // 重新添加監聽器
         DistanceSlider?.onValueChanged.AddListener(OnDistanceSliderChanged);
         DistanceSlider2?.onValueChanged.AddListener(OnDistanceSliderChanged);
     }
 
     private void SetGapSliderValues(float value)
     {
-        // 暫時移除監聽器避免循環調用
         GapSlider?.onValueChanged.RemoveListener(OnGapSliderChanged);
         GapSlider2?.onValueChanged.RemoveListener(OnGapSliderChanged);
 
-        // 設定值
         if (GapSlider) GapSlider.value = value;
         if (GapSlider2) GapSlider2.value = value;
 
-        // 重新添加監聽器
         GapSlider?.onValueChanged.AddListener(OnGapSliderChanged);
         GapSlider2?.onValueChanged.AddListener(OnGapSliderChanged);
     }
 
-    // 新增方法來統一設定所有相關InputField的值
     private void SetDistanceInputFieldValues(string value)
     {
-        // 暫時移除監聽器避免循環調用
         DistanceInputField?.onEndEdit.RemoveListener(OnDistanceInputChanged);
         DistanceInputField2?.onEndEdit.RemoveListener(OnDistanceInputChanged);
 
-        // 設定值
         if (DistanceInputField) DistanceInputField.text = value;
         if (DistanceInputField2) DistanceInputField2.text = value;
 
-        // 重新添加監聽器
         DistanceInputField?.onEndEdit.AddListener(OnDistanceInputChanged);
         DistanceInputField2?.onEndEdit.AddListener(OnDistanceInputChanged);
     }
 
     private void SetGapInputFieldValues(string value)
     {
-        // 暫時移除監聽器避免循環調用
         GapInputField?.onEndEdit.RemoveListener(OnGapInputChanged);
         GapInputField2?.onEndEdit.RemoveListener(OnGapInputChanged);
 
-        // 設定值
         if (GapInputField) GapInputField.text = value;
         if (GapInputField2) GapInputField2.text = value;
 
-        // 重新添加監聽器
         GapInputField?.onEndEdit.AddListener(OnGapInputChanged);
         GapInputField2?.onEndEdit.AddListener(OnGapInputChanged);
     }
 
-    // 修改UpdateInputFields方法以包含新的InputField
     void UpdateInputFields()
     {
         if (WidthInputField)
@@ -954,11 +894,9 @@ public class DrawFunction : MonoBehaviour
             ScaleInputField.text = displayScale.ToString("F0") + "%";
         }
 
-        // 更新所有Distance InputField
         string distanceValue = cameraDistance.ToString("F2");
         SetDistanceInputFieldValues(distanceValue);
 
-        // 更新所有Gap InputField
         string gapValue = gapThreshold.ToString("F3");
         SetGapInputFieldValues(gapValue);
     }
@@ -972,20 +910,17 @@ public class DrawFunction : MonoBehaviour
     {
         LineMaterial.color = co;
 
-        // 同時更新粒子材質顏色
         if (ParticleMaterial)
         {
             ParticleMaterial.color = co;
         }
 
-        // 如果正在3D繪圖模式，更新當前PaintManager的繪圖顏色
         if (currentPaintManager != null)
         {
             currentPaintManager.SetPaintColor(co);
         }
     }
 
-    // 打開圖片選擇器
     public void OpenImageSelector()
     {
         bool hasPermission = NativeGallery.CheckPermission(NativeGallery.PermissionType.Read, NativeGallery.MediaType.Image);
@@ -1002,14 +937,6 @@ public class DrawFunction : MonoBehaviour
                 {
                     PickImageFromGallery();
                 }
-                else
-                {
-                    Debug.Log("圖片存取權限被拒絕");
-                    if (permission == NativeGallery.Permission.Denied)
-                    {
-                        Debug.Log("請到設定中開啟圖片存取權限");
-                    }
-                }
             }, NativeGallery.PermissionType.Read, NativeGallery.MediaType.Image);
         }
     }
@@ -1018,17 +945,12 @@ public class DrawFunction : MonoBehaviour
     {
         NativeGallery.GetImageFromGallery((path) =>
         {
-            Debug.Log("選取的圖片路徑: " + path);
 
             if (path != null)
             {
                 StartCoroutine(LoadParticleImageCoroutine(path));
             }
-            else
-            {
-                Debug.Log("未選取任何圖片");
-            }
-        }, "選擇粒子圖片", "image/*");
+        }, "image/*");
     }
 
     private System.Collections.IEnumerator LoadParticleImageCoroutine(string imagePath)
@@ -1037,49 +959,36 @@ public class DrawFunction : MonoBehaviour
 
         if (loadedTexture != null)
         {
-            Debug.Log($"成功載入粒子圖片，尺寸: {loadedTexture.width}x{loadedTexture.height}");
             OnParticleTextureLoaded(loadedTexture);
-        }
-        else
-        {
-            Debug.LogError("無法載入圖片: " + imagePath);
         }
 
         yield return null;
     }
 
-    // 套用紋理到粒子材質
     public void OnParticleTextureLoaded(Texture2D loadedTexture)
     {
         if (loadedTexture && ParticleMaterial)
         {
             currentParticleTexture = loadedTexture;
 
-            // 將紋理套用到粒子材質
             ParticleMaterial.mainTexture = loadedTexture;
 
-            // 如果使用的是Sprite材質，也可以設定其他屬性
             if (ParticleMaterial.HasProperty("_MainTex"))
             {
                 ParticleMaterial.SetTexture("_MainTex", loadedTexture);
             }
-
-            Debug.Log($"粒子材質已套用新圖片: {loadedTexture.name}");
         }
     }
 
-    // 清除粒子紋理
     public void ClearParticleTexture()
     {
         if (ParticleMaterial)
         {
             ParticleMaterial.mainTexture = null;
             currentParticleTexture = null;
-            Debug.Log("已清除粒子紋理");
         }
     }
 
-    // 重置粒子設定
     public void ResetParticleSettings()
     {
         particleCount = 10;
@@ -1202,17 +1111,14 @@ public class DrawFunction : MonoBehaviour
         lineWidth = 0.02f; if (WidthSlider) WidthSlider.value = lineWidth;
         ParticleScale = 0.02f; if (ScaleSlider) ScaleSlider.value = ParticleScale;
 
-        // 重置Distance相關
         cameraDistance = 0.3f;
         SetDistanceSliderValues(cameraDistance);
 
-        // 重置Gap相關
         gapThreshold = 0.01f;
         SetGapSliderValues(gapThreshold);
 
         Color defaultColor = new Color(1f, 1f, 1f, 1f);
         LineMaterial.color = defaultColor;
-        // 同時重置粒子材質顏色
         if (ParticleMaterial) ParticleMaterial.color = defaultColor;
         if (fcp) fcp.color = defaultColor;
 
@@ -1222,7 +1128,6 @@ public class DrawFunction : MonoBehaviour
         isPaintingOn3D = false; currentPaintManager = null; lastHitObject = null;
         SpaceModeSelection();
 
-        // 重置粒子設定
         ResetParticleSettings();
     }
 
@@ -1239,7 +1144,6 @@ public class DrawFunction : MonoBehaviour
         if (tempLineRenderer) { Destroy(tempLineRenderer.gameObject); tempLineRenderer = null; }
         currentPaintManager = null; lastHitObject = null; SpaceModeSelection();
 
-        // 重置粒子設定
         ResetParticleSettings();
     }
 }

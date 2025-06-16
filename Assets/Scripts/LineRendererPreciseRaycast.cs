@@ -7,7 +7,6 @@ public class LineRendererPreciseRaycast : MonoBehaviour
     [SerializeField] private float lineDetectionThreshold = 0.1f;
     [SerializeField] private float particleDetectionRadius = 0.5f;
 
-    [Header("範圍清除設定")]
     [SerializeField] private bool enableAreaClear = true;
     [SerializeField] private float areaClearRadius = 2f;
     [SerializeField] private GameObject areaClearIndicator;
@@ -86,8 +85,6 @@ public class LineRendererPreciseRaycast : MonoBehaviour
         {
             areaClearIndicator.SetActive(false);
         }
-
-        Debug.Log($"開始按壓於螢幕位置: {screenPosition}, 世界位置: {longPressPosition}");
     }
 
     Vector3 GetWorldPositionFromScreen(Vector2 screenPosition)
@@ -111,7 +108,6 @@ public class LineRendererPreciseRaycast : MonoBehaviour
         float movementDistance = Vector2.Distance(screenPosition, pressStartScreenPosition);
         if (movementDistance > maxTouchMovement)
         {
-            Debug.Log($"觸控移動距離太大: {movementDistance}, 取消長按");
             isLongPressing = false;
             return;
         }
@@ -127,8 +123,6 @@ public class LineRendererPreciseRaycast : MonoBehaviour
 
             int deletedCount = PerformAreaClear(longPressPosition);
             hasTriggeredAreaClear = true;
-
-            Debug.Log($"範圍清除執行於位置: {longPressPosition}，半徑: {areaClearRadius}，刪除了 {deletedCount} 個物件");
         }
     }
 
@@ -156,17 +150,13 @@ public class LineRendererPreciseRaycast : MonoBehaviour
     {
         List<GameObject> objectsToDelete = new List<GameObject>();
 
-        Debug.Log($"開始範圍清除，中心位置: {centerPosition}，半徑: {areaClearRadius}");
-
         LineRenderer[] allLineRenderers = FindObjectsOfType<LineRenderer>();
-        Debug.Log($"找到 {allLineRenderers.Length} 個 LineRenderer");
 
         foreach (LineRenderer lr in allLineRenderers)
         {
             if (lr == null) continue;
 
             bool inRange = IsLineRendererInRange(lr, centerPosition, areaClearRadius);
-            Debug.Log($"LineRenderer {lr.gameObject.name} 是否在範圍內: {inRange}");
 
             if (inRange)
             {
@@ -175,7 +165,6 @@ public class LineRendererPreciseRaycast : MonoBehaviour
         }
 
         ParticleSystem[] allParticleSystems = FindObjectsOfType<ParticleSystem>();
-        Debug.Log($"找到 {allParticleSystems.Length} 個 ParticleSystem");
 
         foreach (ParticleSystem ps in allParticleSystems)
         {
@@ -183,7 +172,6 @@ public class LineRendererPreciseRaycast : MonoBehaviour
 
             float distance = Vector3.Distance(ps.transform.position, centerPosition);
             bool inRange = distance <= areaClearRadius;
-            Debug.Log($"ParticleSystem {ps.gameObject.name} 距離: {distance:F2}, 是否在範圍內: {inRange}");
 
             if (inRange)
             {
@@ -196,7 +184,6 @@ public class LineRendererPreciseRaycast : MonoBehaviour
         {
             if (obj != null)
             {
-                Debug.Log($"刪除物件: {obj.name}");
                 Destroy(obj);
                 deletedCount++;
             }
@@ -219,7 +206,6 @@ public class LineRendererPreciseRaycast : MonoBehaviour
 
             if (distance <= radius)
             {
-                Debug.Log($"LineRenderer 頂點 {i} 在範圍內，距離: {distance:F2}");
                 return true;
             }
         }
@@ -231,7 +217,6 @@ public class LineRendererPreciseRaycast : MonoBehaviour
 
             if (IsLineSegmentIntersectingSphere(lineStart, lineEnd, centerPosition, radius))
             {
-                Debug.Log($"LineRenderer 線段 {i}-{i + 1} 穿過範圍");
                 return true;
             }
         }
@@ -242,7 +227,6 @@ public class LineRendererPreciseRaycast : MonoBehaviour
 
         if (boundsDistance <= radius + maxBoundsSize * 0.5f)
         {
-            Debug.Log($"LineRenderer 包圍盒可能與範圍重疊");
             return true;
         }
 
@@ -278,7 +262,6 @@ public class LineRendererPreciseRaycast : MonoBehaviour
             if (IsRayHittingLineRenderer(ray, lr))
             {
                 Destroy(lr.gameObject);
-                Debug.Log($"刪除了LineRenderer物件: {lr.gameObject.name}");
                 return;
             }
         }
@@ -289,7 +272,6 @@ public class LineRendererPreciseRaycast : MonoBehaviour
             if (IsRayHittingParticleSystem(ray, ps))
             {
                 Destroy(ps.gameObject);
-                Debug.Log($"刪除了ParticleSystem物件: {ps.gameObject.name}");
                 return;
             }
         }
@@ -302,7 +284,6 @@ public class LineRendererPreciseRaycast : MonoBehaviour
             if (IsRayHittingObject(ray, ccs.gameObject))
             {
                 Destroy(ccs.gameObject);
-                Debug.Log($"刪除了CubeCarvingSystem物件: {ccs.gameObject.name}");
                 return;
             }
         }
@@ -399,19 +380,16 @@ public class LineRendererPreciseRaycast : MonoBehaviour
     public void SetAreaClearRadius(float radius)
     {
         areaClearRadius = Mathf.Max(0.1f, radius);
-        Debug.Log($"設定範圍清除半徑為: {areaClearRadius}");
     }
 
     public void SetLongPressTime(float time)
     {
         longPressTime = Mathf.Max(0.1f, time);
-        Debug.Log($"設定長按時間為: {longPressTime}");
     }
 
     public void ToggleAreaClear(bool enabled)
     {
         enableAreaClear = enabled;
-        Debug.Log($"範圍清除功能: {(enabled ? "啟用" : "禁用")}");
     }
 
     void OnDrawGizmos()

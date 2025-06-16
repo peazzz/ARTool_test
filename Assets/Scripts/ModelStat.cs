@@ -12,7 +12,7 @@ public class ModelStat : MonoBehaviour
     [SerializeField] private Vector3 position;
     [SerializeField] private Vector3 rotation;
     [SerializeField] private Vector3 scale;
-    [SerializeField] private Color materialColor; // 新增顏色欄位
+    [SerializeField] private Color materialColor;
     [SerializeField] private string timestamp;
 
     public ModelData ModelData
@@ -44,7 +44,6 @@ public class ModelStat : MonoBehaviour
             shapeType = carvingSystem.GetShapeType().ToString();
         }
 
-        // 嘗試從材質獲取當前顏色
         Color currentColor = Color.white;
         MeshRenderer renderer = GetComponent<MeshRenderer>();
         if (renderer != null && renderer.material != null)
@@ -59,11 +58,10 @@ public class ModelStat : MonoBehaviour
             position = transform.position,
             rotation = transform.eulerAngles,
             scale = transform.localScale,
-            materialColor = currentColor, // 保存顏色
+            materialColor = currentColor,
             timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
         };
 
-        // 更新序列化欄位
         UpdateSerializedFields();
     }
 
@@ -80,7 +78,7 @@ public class ModelStat : MonoBehaviour
         position = modelData.position;
         rotation = modelData.rotation;
         scale = modelData.scale;
-        materialColor = modelData.materialColor; // 更新顏色欄位
+        materialColor = modelData.materialColor;
         timestamp = modelData.timestamp;
     }
 
@@ -93,7 +91,7 @@ public class ModelStat : MonoBehaviour
             position = transform.position,
             rotation = transform.eulerAngles,
             scale = transform.localScale,
-            materialColor = color, // 設定顏色
+            materialColor = color,
             timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
         };
 
@@ -101,7 +99,6 @@ public class ModelStat : MonoBehaviour
         return modelData;
     }
 
-    // 保留原來的方法以向後兼容
     public ModelData CreateModelData(string filename, string shapeType)
     {
         Color currentColor = Color.white;
@@ -122,7 +119,6 @@ public class ModelStat : MonoBehaviour
             modelData.rotation = transform.eulerAngles;
             modelData.scale = transform.localScale;
 
-            // 同步更新序列化欄位
             position = modelData.position;
             rotation = modelData.rotation;
             scale = modelData.scale;
@@ -138,7 +134,6 @@ public class ModelStat : MonoBehaviour
 
     public void UpdateModelData()
     {
-        // 更新顏色資訊
         MeshRenderer renderer = GetComponent<MeshRenderer>();
         if (renderer != null && renderer.material != null)
         {
@@ -182,7 +177,6 @@ public class ModelStat : MonoBehaviour
         UpdateSerializedFields();
     }
 
-    // 新增方法：獲取保存的顏色
     public Color GetSavedColor()
     {
         return modelData.materialColor;
@@ -196,7 +190,7 @@ public class ModelStat : MonoBehaviour
         public Vector3 position;
         public Vector3 rotation;
         public Vector3 scale;
-        public Color materialColor; // 新增顏色顯示
+        public Color materialColor;
         public string timestamp;
     }
 

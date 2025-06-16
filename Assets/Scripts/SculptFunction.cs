@@ -38,10 +38,6 @@ public class SculptFunction : MonoBehaviour
     [SerializeField] private float rotationSpeed = 0.5f;
     [SerializeField] private bool allowRotationControl = true;
     [SerializeField] private float raycastCacheTime = 0.15f;
-    [SerializeField] private float cutMoveSpeed = 0.4f;
-    [SerializeField] private float cutReturnSpeed = 1f;
-    [SerializeField] private float maxCutDistance = 4f;
-    [SerializeField] private float minCutDistance = 0f;
     [SerializeField] private float distanceDetectionInterval = 0.2f;
     [SerializeField] private float maxDetectionDistance = 10f;
     private float lastDistanceDetectionTime = 0f;
@@ -212,17 +208,13 @@ public class SculptFunction : MonoBehaviour
         originalLayer = currentSelectedObject.layer;
         SetLayerRecursively(currentSelectedObject, LayerMask.NameToLayer("PreviewObject"));
 
-        // 獲取模型的當前狀態
         CubeCarvingSystem carvingSystem = currentSelectedObject.GetComponent<CubeCarvingSystem>();
         if (carvingSystem)
         {
-            // 獲取模型的完整狀態
             CubeCarvingSystem.ModelState modelState = carvingSystem.GetCurrentModelState();
 
-            // 載入到 UI 參數（不修改模型本身）
             LoadModelStateToUI(modelState);
 
-            // 保存原始狀態用於取消操作
             SaveOriginalState(modelState);
 
             if (!allCarvingSystems.Contains(carvingSystem)) allCarvingSystems.Add(carvingSystem);
@@ -240,18 +232,14 @@ public class SculptFunction : MonoBehaviour
         SetDefaultPositionLockState(true);
 
         obj.GetComponent<Renderer>().material.color = fcp.color;
-
-        Debug.Log($"選擇物件：{obj.name}，載入狀態到 UI");
     }
 
     private void LoadModelStateToUI(CubeCarvingSystem.ModelState modelState)
     {
-        // 載入變換參數
         originalObjectPosition = modelState.position;
         originalObjectRotation = modelState.rotation;
         originalObjectScale = modelState.scale;
 
-        // 計算 UI 參數
         Vector3 scale = modelState.scale;
         mainScale = Mathf.Max(scale.x, scale.y, scale.z);
         if (mainScale > 0)
@@ -268,23 +256,17 @@ public class SculptFunction : MonoBehaviour
 
         heightOffset = 0f;
 
-        // 載入顏色到 UI（不修改模型）
         fcp.onColorChange.RemoveListener(OnChangeColor);
         fcp.color = modelState.color;
         ColorMaterial.color = modelState.color;
         fcp.onColorChange.AddListener(OnChangeColor);
-
-        Debug.Log($"載入模型狀態到 UI - 顏色: {modelState.color}, 貼圖: {modelState.hasTexture}");
     }
 
-    // 3. 新增方法：保存原始狀態
     private void SaveOriginalState(CubeCarvingSystem.ModelState modelState)
     {
         originalHasTexture = modelState.hasTexture;
         originalTexture = modelState.texture;
         originalColor = modelState.color;
-
-        Debug.Log($"保存原始狀態 - 顏色: {originalColor}, 貼圖: {originalHasTexture}");
     }
 
     void DeselectCurrentObject()
@@ -416,9 +398,7 @@ public class SculptFunction : MonoBehaviour
             DualMaterialManager dualManager = currentSelectedObject.GetComponent<DualMaterialManager>();
             if (dualManager)
             {
-                // 即使在貼圖模式下也允許調整顏色（作為色調調整）
                 dualManager.SetColor(co);
-                Debug.Log($"編輯模式下套用顏色: {co} (貼圖模式: {dualManager.IsInTextureMode()})");
             }
             else
             {
@@ -454,7 +434,7 @@ public class SculptFunction : MonoBehaviour
         PaintManager paintManager = model.GetComponent<PaintManager>();
         if (paintManager != null)
         {
-            return; // 如果有 PaintManager，讓它處理顏色
+            return;
         }
 
         CubeCarvingSystem carvingSystem = model.GetComponent<CubeCarvingSystem>();
@@ -463,10 +443,8 @@ public class SculptFunction : MonoBehaviour
             MeshRenderer renderer = model.GetComponent<MeshRenderer>();
             if (renderer != null)
             {
-                // 不創建新材質，而是修改現有材質的 ColorTint
                 Material currentMaterial = renderer.material;
 
-                // 檢查材質是否有 ColorTint 屬性
                 if (currentMaterial.HasProperty("_ColorTint"))
                 {
                     currentMaterial.SetColor("_ColorTint", color);
@@ -489,7 +467,6 @@ public class SculptFunction : MonoBehaviour
                 }
                 else
                 {
-                    // 如果都沒有，則設定主顏色
                     currentMaterial.color = color;
                 }
             }
@@ -504,7 +481,6 @@ public class SculptFunction : MonoBehaviour
                 {
                     Material currentMaterial = renderer.material;
 
-                    // 檢查材質是否有 ColorTint 屬性
                     if (currentMaterial.HasProperty("_ColorTint"))
                     {
                         currentMaterial.SetColor("_ColorTint", color);
@@ -595,7 +571,6 @@ public class SculptFunction : MonoBehaviour
             if (!allCarvingSystems.Contains(carvingSystem)) allCarvingSystems.Add(carvingSystem);
         }
 
-        // 確保有 DualMaterialManager
         DualMaterialManager dualManager = newCarvingSystem.GetComponent<DualMaterialManager>();
         if (!dualManager) dualManager = newCarvingSystem.AddComponent<DualMaterialManager>();
 
@@ -620,7 +595,6 @@ public class SculptFunction : MonoBehaviour
 
     void SetMaterialAndLayer(GameObject obj, Material material, string layerName)
     {
-        // 只有在沒有 DualMaterialManager 或者 DualMaterialManager 不在紋理模式時才設置材質
         DualMaterialManager dualManager = obj.GetComponent<DualMaterialManager>();
         if (material && (!dualManager || !dualManager.IsInTextureMode()))
         {
@@ -1033,7 +1007,6 @@ public class SculptFunction : MonoBehaviour
             lastPreviewPosition = previewModel.transform.position;
             lastPreviewRotation = previewModel.transform.rotation;
 
-            // 獲取預覽模型的材質狀態
             DualMaterialManager previewDualManager = previewModel.GetComponent<DualMaterialManager>();
             bool hasTexture = false;
             Texture2D currentTexture = null;
@@ -1059,7 +1032,6 @@ public class SculptFunction : MonoBehaviour
                 SetLayerRecursively(finalModel, LayerMask.NameToLayer("SculptObject"));
                 finalModel.tag = "SculptObject";
 
-                // 設置材質狀態
                 DualMaterialManager finalDualManager = finalModel.GetComponent<DualMaterialManager>();
                 if (finalDualManager)
                 {
@@ -1075,7 +1047,6 @@ public class SculptFunction : MonoBehaviour
                     }
                 }
 
-                // 使用新的整合系統保存模型信息
                 CubeCarvingSystem carvingSystem = finalModel.GetComponent<CubeCarvingSystem>();
                 if (carvingSystem)
                 {
@@ -1088,13 +1059,10 @@ public class SculptFunction : MonoBehaviour
                         texture: currentTexture
                     );
 
-                    // 確認狀態
                     carvingSystem.CommitCurrentState();
                 }
             }
         }
-
-        Debug.Log("新物件創建完成並保存狀態");
     }
 
     void ApplyEditChanges()
@@ -1114,7 +1082,6 @@ public class SculptFunction : MonoBehaviour
         PaintManager paintManager = currentSelectedObject.GetComponent<PaintManager>();
         if (paintManager == null)
         {
-            // 使用 ColorTint 應用顏色
             ApplyColorToModel(currentSelectedObject, fcp.color);
         }
 
@@ -1266,28 +1233,21 @@ public class SculptFunction : MonoBehaviour
     {
         if (!isEditingExistingObject || !currentSelectedObject) return;
 
-        Debug.Log("取消編輯變更，恢復到原始狀態");
-
         CubeCarvingSystem carvingSystem = currentSelectedObject.GetComponent<CubeCarvingSystem>();
         if (carvingSystem)
         {
-            // 恢復到保存的狀態
             carvingSystem.RevertToSavedState();
         }
 
-        // 恢復 UI 到原始狀態
         fcp.onColorChange.RemoveListener(OnChangeColor);
         fcp.color = originalColor;
         ColorMaterial.color = originalColor;
         fcp.onColorChange.AddListener(OnChangeColor);
 
-        // 恢復層級
         SetLayerRecursively(currentSelectedObject, originalLayer);
 
         DeselectCurrentObject();
         isEditingExistingObject = false;
-
-        Debug.Log($"已恢復到原始狀態 - 顏色: {originalColor}");
 
         SaveButton.SetActive(false);
     }
@@ -1334,8 +1294,6 @@ public class SculptFunction : MonoBehaviour
     {
         if (!obj) return;
 
-        Debug.Log("恢復物件原始顏色");
-
         CubeCarvingSystem carvingSystem = obj.GetComponent<CubeCarvingSystem>();
         if (carvingSystem)
         {
@@ -1349,27 +1307,15 @@ public class SculptFunction : MonoBehaviour
 
         if (hasPermission)
         {
-            // 直接開啟圖片選取器
             PickImageFromGallery();
         }
         else
         {
-            // 請求權限
             NativeGallery.RequestPermissionAsync((permission) =>
             {
                 if (permission == NativeGallery.Permission.Granted)
                 {
                     PickImageFromGallery();
-                }
-                else
-                {
-                    Debug.Log("圖片存取權限被拒絕");
-                    if (permission == NativeGallery.Permission.Denied)
-                    {
-                        Debug.Log("請到設定中開啟圖片存取權限");
-                        // 可選：開啟設定頁面
-                        // NativeGallery.OpenSettings();
-                    }
                 }
             }, NativeGallery.PermissionType.Read, NativeGallery.MediaType.Image);
         }
@@ -1379,17 +1325,12 @@ public class SculptFunction : MonoBehaviour
     {
         NativeGallery.GetImageFromGallery((path) =>
         {
-            Debug.Log("選取的圖片路徑: " + path);
-
             if (path != null)
             {
                 StartCoroutine(LoadImageCoroutine(path));
             }
-            else
-            {
-                Debug.Log("未選取任何圖片");
-            }
-        }, "選擇一張圖片", "image/*");
+
+        }, "Select Image", "image/*");
     }
 
     private System.Collections.IEnumerator LoadImageCoroutine(string imagePath)
@@ -1398,19 +1339,12 @@ public class SculptFunction : MonoBehaviour
 
         if (loadedTexture != null)
         {
-            Debug.Log($"成功載入圖片，尺寸: {loadedTexture.width}x{loadedTexture.height}");
-
             OnTextureLoaded(loadedTexture);
-        }
-        else
-        {
-            Debug.LogError("無法載入圖片: " + imagePath);
         }
 
         yield return null;
     }
 
-    // 接收圖片的方法 (供file browser調用)
     public void OnTextureLoaded(Texture2D loadedTexture)
     {
         GameObject targetModel = isEditingExistingObject ? currentSelectedObject : previewModel;
@@ -1421,14 +1355,11 @@ public class SculptFunction : MonoBehaviour
             {
                 if (loadedTexture)
                 {
-                    Debug.Log($"套用貼圖預覽: {loadedTexture.name} 到 {targetModel.name}");
                     dualManager.SetTextureMode(loadedTexture);
-                    // 保持當前顏色作為色調
                     dualManager.SetColor(fcp.color);
                 }
                 else
                 {
-                    Debug.Log("切換回顏色模式");
                     dualManager.SetPaintMode();
                     dualManager.SetColor(fcp.color);
                 }
@@ -1436,7 +1367,6 @@ public class SculptFunction : MonoBehaviour
         }
     }
 
-    // 清除貼圖
     public void ClearTexture()
     {
         GameObject targetModel = isEditingExistingObject ? currentSelectedObject : previewModel;
@@ -1447,7 +1377,6 @@ public class SculptFunction : MonoBehaviour
         }
     }
 
-    // 檢查是否可以繪畫
     public bool CanPaintOnCurrentObject()
     {
         GameObject targetModel = isEditingExistingObject ? currentSelectedObject : previewModel;

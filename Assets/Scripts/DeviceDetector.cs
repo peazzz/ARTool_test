@@ -34,11 +34,9 @@ public class DeviceDetector : MonoBehaviour
 
     void DetectDeviceType()
     {
-        // 使用多重判斷提高準確性
         bool isTabletBySize = IsTabletBySize();
         bool isTabletByRatio = IsTabletByAspectRatio();
 
-        // 如果兩個條件都符合，或者尺寸明顯是平板，則判定為平板
         if ((isTabletBySize && isTabletByRatio) ||
             (GetScreenDiagonalInches() >= 9.0f))
         {

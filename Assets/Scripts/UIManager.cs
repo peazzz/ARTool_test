@@ -178,8 +178,7 @@ public class UIManager : MonoBehaviour
         ColorPage1.SetActive(false);
         isInColorPage = false;
 
-        // 確保正確切換到 OtherPage
-        OtherPageSelect(); // 使用現有的方法來確保狀態一致
+        OtherPageSelect();
 
         if (sculptFunction) sculptFunction.SyncCurrentModelColorToUI();
     }

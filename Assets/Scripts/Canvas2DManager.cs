@@ -19,7 +19,6 @@ public class Canvas2DManager : MonoBehaviour
     public GameObject PaintBucket;
     public GameObject Eyedropper;
 
-    // 平板專用工具按鈕
     [Header("Drawing Icon - Tablet")]
     public GameObject Pen_Tablet;
     public GameObject Eraser_Tablet;
@@ -36,7 +35,6 @@ public class Canvas2DManager : MonoBehaviour
     public Slider Canvas2DWidthSlider;
     public InputField Canvas2DWidthInputField;
 
-    // 平板專用UI控制項
     [Header("2D Canvas UI Input - Tablet")]
     public Slider Canvas2DWidthSlider_Tablet;
     public InputField Canvas2DWidthInputField_Tablet;
@@ -54,7 +52,6 @@ public class Canvas2DManager : MonoBehaviour
     public int canvasHeight = 1024;
     public Color backgroundColor = Color.white;
 
-    // Undo/Redo 系統
     [Header("Undo/Redo System")]
     public Button UndoButton;
     public Button RedoButton;
@@ -67,7 +64,6 @@ public class Canvas2DManager : MonoBehaviour
     private int currentHistoryIndex = -1;
     private bool isRestoringState = false;
 
-    // 圖片保存系統
     [Header("Image Save System")]
     public bool autoSaveOnFinish = true;
     public string saveFileName = "ARTool";
@@ -75,7 +71,7 @@ public class Canvas2DManager : MonoBehaviour
     [Range(50, 100)]
     public int jpegQuality = 90;
     public bool showSaveDialog = true;
-    public Text saveStatusText; // 用於顯示保存狀態的UI文字
+    public Text saveStatusText;
 
     public enum ImageFormat
     {
@@ -107,9 +103,6 @@ public class Canvas2DManager : MonoBehaviour
 
     #region Image Save System
 
-    /// <summary>
-    /// 保存當前畫布內容到本機
-    /// </summary>
     public void SaveImageToDevice()
     {
         StartCoroutine(SaveImageCoroutine());
@@ -117,25 +110,14 @@ public class Canvas2DManager : MonoBehaviour
 
     private IEnumerator SaveImageCoroutine()
     {
-        if (drawingTexture == null)
-        {
-            ShowSaveStatus("錯誤：沒有可保存的圖片", false);
-            yield break;
-        }
-
-        ShowSaveStatus("正在保存圖片...", true);
-
-        // 確保紋理是最新的
         ForceTextureUpdate();
 
         try
         {
-            // 創建一個新的紋理副本來避免修改原始紋理
             Texture2D saveTexture = new Texture2D(canvasWidth, canvasHeight, TextureFormat.RGBA32, false);
             saveTexture.SetPixels(drawingTexture.GetPixels());
             saveTexture.Apply();
 
-            // 根據選擇的格式編碼圖片
             byte[] imageData;
             string fileExtension;
 
@@ -150,31 +132,15 @@ public class Canvas2DManager : MonoBehaviour
                 fileExtension = ".jpg";
             }
 
-            // 生成唯一的檔案名稱
             string fileName = GenerateUniqueFileName(saveFileName, fileExtension);
 
-            // 保存到設備
             bool saveSuccess = SaveToDevice(imageData, fileName);
 
-            // 清理記憶體
             DestroyImmediate(saveTexture);
-
-            if (saveSuccess)
-            {
-                ShowSaveStatus($"圖片已保存：{fileName}", true);
-
-                if (enableDebugLogs)
-                    Debug.Log($"圖片保存成功：{fileName}");
-            }
-            else
-            {
-                ShowSaveStatus("保存失敗", false);
-            }
         }
         catch (System.Exception e)
         {
-            ShowSaveStatus("保存時發生錯誤", false);
-            Debug.LogError($"保存圖片時發生錯誤：{e.Message}");
+            Debug.LogError($"{e.Message}");
         }
 
         yield return new WaitForSeconds(2f);
@@ -195,7 +161,7 @@ public class Canvas2DManager : MonoBehaviour
         }
         catch (System.Exception e)
         {
-            Debug.LogError($"保存到設備時發生錯誤：{e.Message}");
+            Debug.LogError($"{e.Message}");
             return false;
         }
     }
@@ -204,7 +170,6 @@ public class Canvas2DManager : MonoBehaviour
     {
         try
         {
-            // Android：保存到 Pictures/ARTool 資料夾
             string folderPath = Path.Combine(Application.persistentDataPath, "Pictures");
 
             if (!Directory.Exists(folderPath))
@@ -215,7 +180,6 @@ public class Canvas2DManager : MonoBehaviour
             string filePath = Path.Combine(folderPath, fileName);
             File.WriteAllBytes(filePath, imageData);
 
-            // 通知 Android 媒體庫更新
             using (AndroidJavaClass unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
             using (AndroidJavaObject currentActivity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
             using (AndroidJavaObject context = currentActivity.Call<AndroidJavaObject>("getApplicationContext"))
@@ -231,7 +195,7 @@ public class Canvas2DManager : MonoBehaviour
         }
         catch (System.Exception e)
         {
-            Debug.LogError($"Android 保存失敗：{e.Message}");
+            Debug.LogError($"{e.Message}");
             return false;
         }
     }
@@ -240,20 +204,14 @@ public class Canvas2DManager : MonoBehaviour
     {
         try
         {
-            // iOS：保存到相簿
             string tempPath = Path.Combine(Application.persistentDataPath, fileName);
             File.WriteAllBytes(tempPath, imageData);
-
-            // 這裡需要原生 iOS 插件來保存到相簿
-            // 暫時保存到 Documents 資料夾
-            if (enableDebugLogs)
-                Debug.Log($"iOS: 圖片已保存到 Documents 資料夾：{tempPath}");
 
             return true;
         }
         catch (System.Exception e)
         {
-            Debug.LogError($"iOS 保存失敗：{e.Message}");
+            Debug.LogError($"{e.Message}");
             return false;
         }
     }
@@ -262,7 +220,6 @@ public class Canvas2DManager : MonoBehaviour
     {
         try
         {
-            // PC：保存到 Documents/MyApp 資料夾
             string documentsPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments);
             string folderPath = Path.Combine(documentsPath, "ARTool");
 
@@ -275,13 +232,13 @@ public class Canvas2DManager : MonoBehaviour
             File.WriteAllBytes(filePath, imageData);
 
             if (enableDebugLogs)
-                Debug.Log($"PC: 圖片已保存到：{filePath}");
+                Debug.Log($"{filePath}");
 
             return true;
         }
         catch (System.Exception e)
         {
-            Debug.LogError($"PC 保存失敗：{e.Message}");
+            Debug.LogError($"{e.Message}");
             return false;
         }
     }
@@ -302,7 +259,7 @@ public class Canvas2DManager : MonoBehaviour
         }
 
         if (enableDebugLogs)
-            Debug.Log($"保存狀態：{message}");
+            Debug.Log($"{message}");
     }
 
     private void HideSaveStatus()
@@ -313,9 +270,6 @@ public class Canvas2DManager : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// 手動觸發保存圖片（可以綁定到按鈕）
-    /// </summary>
     public void ManualSaveImage()
     {
         SaveImageToDevice();
@@ -361,9 +315,6 @@ public class Canvas2DManager : MonoBehaviour
             RedoButton_Tablet.onClick.AddListener(Redo);
 
         SaveCurrentState();
-
-        if (enableDebugLogs)
-            Debug.Log("Undo/Redo系統初始化完成");
     }
 
     public void SaveCurrentState()
@@ -390,9 +341,6 @@ public class Canvas2DManager : MonoBehaviour
         }
 
         UpdateUndoRedoButtons();
-
-        if (enableDebugLogs)
-            Debug.Log($"保存狀態 - 當前索引: {currentHistoryIndex}, 總狀態數: {historyStates.Count}");
     }
 
     public void Undo()
@@ -401,9 +349,6 @@ public class Canvas2DManager : MonoBehaviour
 
         currentHistoryIndex--;
         RestoreState(currentHistoryIndex);
-
-        if (enableDebugLogs)
-            Debug.Log($"執行Undo - 當前索引: {currentHistoryIndex}");
     }
 
     public void Redo()
@@ -412,9 +357,6 @@ public class Canvas2DManager : MonoBehaviour
 
         currentHistoryIndex++;
         RestoreState(currentHistoryIndex);
-
-        if (enableDebugLogs)
-            Debug.Log($"執行Redo - 當前索引: {currentHistoryIndex}");
     }
 
     private bool CanUndo()
@@ -480,9 +422,6 @@ public class Canvas2DManager : MonoBehaviour
         historyStates.Clear();
         currentHistoryIndex = -1;
         SaveCurrentState();
-
-        if (enableDebugLogs)
-            Debug.Log("清除所有歷史記錄");
     }
 
     #endregion
@@ -492,21 +431,11 @@ public class Canvas2DManager : MonoBehaviour
         if (DeviceDetector.Instance != null)
         {
             isCurrentlyTablet = DeviceDetector.Instance.IsTablet();
-
-            if (enableDebugLogs)
-            {
-                Debug.Log($"偵測到設備類型: {(isCurrentlyTablet ? "平板" : "手機")}");
-            }
         }
         else
         {
             float aspectRatio = (float)Screen.width / Screen.height;
             isCurrentlyTablet = aspectRatio < 1.7f;
-
-            if (enableDebugLogs)
-            {
-                Debug.LogWarning("DeviceDetector 不存在，使用預設邏輯判斷設備類型");
-            }
         }
     }
 
@@ -669,8 +598,6 @@ public class Canvas2DManager : MonoBehaviour
 
         CreateDrawingArea(Canvas2D, out canvasImage, new Vector2(800, 600));
         CreateDrawingArea(Canvas2D_Tablet, out canvasImage_Tablet, new Vector2(1000, 750));
-
-        Debug.Log("自動創建了手機版和平板版 2D Canvas UI");
     }
 
     void CreateDrawingArea(GameObject parentCanvas, out RawImage rawImage, Vector2 size)
@@ -744,9 +671,6 @@ public class Canvas2DManager : MonoBehaviour
                 Canvas2D_Tablet.SetActive(false);
 
             Canvas2D.SetActive(true);
-
-            if (enableDebugLogs)
-                Debug.Log("顯示手機版 2D Canvas");
         }
     }
 
@@ -760,9 +684,6 @@ public class Canvas2DManager : MonoBehaviour
                 Canvas2D.SetActive(false);
 
             Canvas2D_Tablet.SetActive(true);
-
-            if (enableDebugLogs)
-                Debug.Log("顯示平板版 2D Canvas");
         }
     }
 
@@ -791,9 +712,6 @@ public class Canvas2DManager : MonoBehaviour
         {
             Canvas2D_Tablet.SetActive(false);
         }
-
-        if (enableDebugLogs)
-            Debug.Log("2D Canvas已隱藏");
     }
 
     public RawImage GetCurrentCanvasImage()
@@ -814,8 +732,6 @@ public class Canvas2DManager : MonoBehaviour
     {
         currentBrushColor = color;
         UpdateUIColorDisplay();
-        if (enableDebugLogs)
-            Debug.Log($"設置筆刷顏色: {color}");
     }
 
     public void SetBrushSize(float size)
@@ -832,8 +748,6 @@ public class Canvas2DManager : MonoBehaviour
         }
 
         Vector2 canvasPos = ScreenToCanvasPosition(screenPosition, currentCanvas);
-        if (enableDebugLogs)
-            Debug.Log($"開始繪圖 - 螢幕座標: {screenPosition}, 畫布座標: {canvasPos}");
 
         if (IsValidCanvasPosition(canvasPos))
         {
@@ -852,12 +766,6 @@ public class Canvas2DManager : MonoBehaviour
             isDrawing = true;
             lastDrawPosition = canvasPos;
             DrawPoint(canvasPos);
-            if (enableDebugLogs)
-                Debug.Log("成功開始繪圖");
-        }
-        else if (enableDebugLogs)
-        {
-            Debug.Log($"座標無效: {canvasPos}, 畫布大小: {canvasWidth}x{canvasHeight}");
         }
     }
 
@@ -892,12 +800,7 @@ public class Canvas2DManager : MonoBehaviour
         {
             isDrawing = false;
             ForceTextureUpdate();
-
-            // 繪圖完成後保存狀態，用於Undo/Redo
             SaveCurrentState();
-
-            if (enableDebugLogs)
-                Debug.Log("停止繪圖");
         }
     }
 
@@ -926,8 +829,6 @@ public class Canvas2DManager : MonoBehaviour
 
         if (targetCanvas == null)
         {
-            if (enableDebugLogs)
-                Debug.LogError("targetCanvas為null！");
             return Vector2.zero;
         }
 
@@ -941,8 +842,6 @@ public class Canvas2DManager : MonoBehaviour
 
         if (!isInside)
         {
-            if (enableDebugLogs)
-                Debug.Log("點擊位置不在畫布範圍內");
             return new Vector2(-1, -1);
         }
 
@@ -1049,7 +948,6 @@ public class Canvas2DManager : MonoBehaviour
         drawingTexture.SetPixels(fillColors);
         drawingTexture.Apply();
 
-        // 清除畫布後保存狀態
         SaveCurrentState();
     }
 
@@ -1063,7 +961,6 @@ public class Canvas2DManager : MonoBehaviour
             Color pickedColor = drawingTexture.GetPixel(x, y);
             SetBrushColor(pickedColor);
 
-            // 更新兩邊顏色選擇器
             if (fcp != null)
             {
                 fcp.color = pickedColor;
@@ -1074,15 +971,11 @@ public class Canvas2DManager : MonoBehaviour
                 ColorButton_Tablet.GetComponent<Image>().color = pickedColor;
             }
 
-            // 自動切換到筆刷工具
             usePen = true;
             useEraser = false;
             usePaintBucket = false;
             useEyedropper = false;
             SelectTool(1, 0, 0, 0);
-
-            if (enableDebugLogs)
-                Debug.Log($"吸取顏色: {pickedColor}，已自動切換到筆刷工具");
         }
     }
 
@@ -1099,7 +992,6 @@ public class Canvas2DManager : MonoBehaviour
         newColor.a = 1f;
         FastFloodFill(startPosition, newColor);
 
-        // 填充完成後保存狀態
         SaveCurrentState();
     }
 
@@ -1189,7 +1081,6 @@ public class Canvas2DManager : MonoBehaviour
 
     private void Complete()
     {
-        // 在清除畫布前先保存圖片（如果啟用自動保存）
         if (autoSaveOnFinish)
         {
             SaveImageToDevice();
@@ -1221,7 +1112,6 @@ public class Canvas2DManager : MonoBehaviour
         uiManager.ClearModeButton.SetActive(true);
         uiManager.LoadButton.SetActive(true);
 
-        // 完成時清除歷史記錄
         ClearHistory();
     }
 
@@ -1233,7 +1123,6 @@ public class Canvas2DManager : MonoBehaviour
         uiManager.FounctionUI.SetActive(true);
         uiManager.SwitchToPanel(uiManager.DrawPanel1);
 
-        // 離開時清除歷史記錄
         ClearHistory();
     }
 
@@ -1245,9 +1134,6 @@ public class Canvas2DManager : MonoBehaviour
     public void RefreshDeviceDetection()
     {
         DetectAndSetupDevice();
-
-        if (enableDebugLogs)
-            Debug.Log($"重新偵測設備類型: {(isCurrentlyTablet ? "平板" : "手機")}");
     }
 
     public void ColorButtonChange()

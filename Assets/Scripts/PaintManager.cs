@@ -35,7 +35,6 @@ public class PaintManager : MonoBehaviour
 
         if (targetRenderer == null || carvingSystem == null)
         {
-            Debug.LogError("PaintManager needs Renderer and CubeCarvingSystem components!");
             return;
         }
 
@@ -160,11 +159,6 @@ public class PaintManager : MonoBehaviour
                 }
             }
         }
-
-        if (showDebugInfo)
-        {
-            Debug.Log("Test pattern created for UV debugging");
-        }
     }
 
     public void PaintAt(Vector3 worldPosition, Vector3 normal)
@@ -181,13 +175,8 @@ public class PaintManager : MonoBehaviour
 
         if (showDebugInfo)
         {
-            Debug.Log($"Paint at World: {worldPosition}, Local: {localPosition}, Face: {face}, UV: {uv}, LocalNormal: {localNormal}");
-
-            // 新增：詳細除錯資訊
             Vector3 cubeCenter = transform.position;
             Vector3 relativePos = worldPosition - cubeCenter;
-            Debug.Log($"Cube Center: {cubeCenter}, Relative Position: {relativePos}");
-            Debug.Log($"Hit Normal: {normal}, Local Normal: {localNormal}");
         }
 
         PaintAtUV(uv, face);
@@ -216,12 +205,10 @@ public class PaintManager : MonoBehaviour
         float cubeSize = carvingSystem.GetCubeSize();
         float halfSize = cubeSize * 0.5f;
 
-        // 將局部座標正規化到 [0, 1] 範圍
         Vector3 normalizedPos = (localPos + Vector3.one * halfSize) / cubeSize;
 
         Vector2 faceUV = Vector2.zero;
 
-        // 簡化版本：先不做任何翻轉，直接按最基本的邏輯計算
         switch (face)
         {
             case FaceDirection.Up:
@@ -243,11 +230,6 @@ public class PaintManager : MonoBehaviour
         faceUV.x = Mathf.Clamp01(faceUV.x);
         faceUV.y = Mathf.Clamp01(faceUV.y);
 
-        if (showDebugInfo)
-        {
-            Debug.Log($"SIMPLE VERSION - Face: {face}, LocalPos: {localPos}, NormalizedPos: {normalizedPos}, FaceUV: {faceUV}");
-        }
-
         if (carvingSystem.GetUVMode() == UVMode.UnwrappedFaces)
         {
             return MapFaceUVToUnwrappedUV(faceUV, face);
@@ -263,7 +245,6 @@ public class PaintManager : MonoBehaviour
         Vector2 regionOffset = Vector2.zero;
         Vector2 regionSize = new Vector2(1f / 3f, 1f / 2f);
 
-        // 必須與 CubeCarvingSystem 中的 UV 區域分配完全一致
         switch (face)
         {
             case FaceDirection.Up:
@@ -436,7 +417,6 @@ public class PaintManager : MonoBehaviour
         }
     }
 
-    // 新增方法來支援 DrawFunction.cs
     public void SetPaintColor(Color color)
     {
         paintColor = color;

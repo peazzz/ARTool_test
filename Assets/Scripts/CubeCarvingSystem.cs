@@ -84,7 +84,6 @@ public class CubeCarvingSystem : MonoBehaviour
     {
         int estimatedSize = gridSize * gridSize * 24;
 
-        // 安全地設定 Capacity，確保不小於當前大小
         if (estimatedSize > reusableVertices.Count)
             reusableVertices.Capacity = estimatedSize;
         if (estimatedSize > reusableTriangles.Count)
@@ -290,17 +289,10 @@ public class CubeCarvingSystem : MonoBehaviour
             mesh.normals = reusableNormals.ToArray();
             mesh.uv = reusableUVs.ToArray();
             mesh.RecalculateBounds();
-
-            Debug.Log($"GenerateMesh 完成 - 處理了 {processedVoxels} 個 voxels, 生成 {reusableVertices.Count} 個頂點, {reusableTriangles.Count / 3} 個三角形");
-        }
-        else
-        {
-            Debug.LogWarning("GenerateMesh: 沒有生成任何頂點！");
         }
 
         meshFilter.mesh = mesh;
 
-        // 立即更新渲染器
         if (meshRenderer)
         {
             meshRenderer.enabled = false;
@@ -313,7 +305,6 @@ public class CubeCarvingSystem : MonoBehaviour
             StartCoroutine(UpdateMeshColliderNextFrame());
         }
 
-        // 更新最後網格更新時間
         lastMeshUpdateTime = Time.time;
     }
 
@@ -756,7 +747,6 @@ public class CubeCarvingSystem : MonoBehaviour
     {
         if (newVoxelData == null)
         {
-            Debug.LogWarning("嘗試設定空的 voxel 資料");
             return;
         }
 
@@ -764,21 +754,15 @@ public class CubeCarvingSystem : MonoBehaviour
         int ySize = newVoxelData.GetLength(1);
         int zSize = newVoxelData.GetLength(2);
 
-        // 清空緩存的網格資料
         reusableVertices.Clear();
         reusableTriangles.Clear();
         reusableNormals.Clear();
         reusableUVs.Clear();
 
-        // 檢查維度是否匹配當前的 gridSize
         if (xSize != gridSize || ySize != gridSize || zSize != gridSize)
         {
-            Debug.LogWarning($"Voxel 資料維度不匹配。期望: {gridSize}x{gridSize}x{gridSize}, 實際: {xSize}x{ySize}x{zSize}");
-
-            // 如果維度不同，調整 gridSize
             gridSize = Mathf.Max(xSize, ySize, zSize);
 
-            // 重新設定 Capacity（安全地）
             int newEstimatedSize = gridSize * gridSize * 24;
             reusableVertices.Capacity = Mathf.Max(reusableVertices.Count, newEstimatedSize);
             reusableTriangles.Capacity = Mathf.Max(reusableTriangles.Count, newEstimatedSize * 6);
@@ -786,23 +770,18 @@ public class CubeCarvingSystem : MonoBehaviour
             reusableUVs.Capacity = Mathf.Max(reusableUVs.Count, newEstimatedSize);
         }
 
-        // 直接設定 voxels 陣列
         voxels = CloneVoxelArray(newVoxelData);
 
-        // 立即重新生成網格 - 這是關鍵！
         GenerateMesh();
 
-        // 更新碰撞器
         if (meshCollider && mesh)
         {
             meshCollider.sharedMesh = null;
             StartCoroutine(UpdateMeshColliderDelayed());
         }
 
-        // 更新模型狀態
         NotifyModelStatUpdate();
 
-        // 強制更新物理和渲染
         if (meshRenderer && meshFilter)
         {
             meshFilter.mesh = mesh;
@@ -810,15 +789,11 @@ public class CubeCarvingSystem : MonoBehaviour
             meshRenderer.enabled = true;
         }
 
-        // 除錯：確認設定後的狀態
         int activeVoxels = 0;
         for (int x = 0; x < gridSize; x++)
             for (int y = 0; y < gridSize; y++)
                 for (int z = 0; z < gridSize; z++)
                     if (voxels[x, y, z]) activeVoxels++;
-
-        Debug.Log($"SetVoxelData 完成 - 維度: {gridSize}x{gridSize}x{gridSize}, 活躍 voxels: {activeVoxels}");
-        Debug.Log($"網格頂點數: {mesh?.vertexCount ?? 0}, 三角形數: {mesh?.triangles?.Length / 3 ?? 0}");
     }
 
     private IEnumerator UpdateMeshColliderDelayed()
@@ -833,19 +808,11 @@ public class CubeCarvingSystem : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// 取得當前的 voxel 資料（供外部存取）
-    /// </summary>
-    /// <returns>當前的 voxel 資料副本</returns>
     public bool[,,] GetVoxelData()
     {
         return CloneVoxelArray(voxels);
     }
 
-    /// <summary>
-    /// 檢查是否有雕刻痕跡
-    /// </summary>
-    /// <returns>如果有體素被移除則返回 true</returns>
     public bool HasCarvingMarks()
     {
         if (voxels == null) return false;
@@ -865,14 +832,9 @@ public class CubeCarvingSystem : MonoBehaviour
             }
         }
 
-        // 如果不是所有體素都存在，表示有雕刻痕跡
-        // 這裡需要根據 shapeType 來判斷完整形狀應該有多少體素
         return activeVoxels < GetExpectedVoxelCount();
     }
 
-    /// <summary>
-    /// 取得完整形狀預期的體素數量
-    /// </summary>
     private int GetExpectedVoxelCount()
     {
         switch (shapeType)
@@ -881,7 +843,6 @@ public class CubeCarvingSystem : MonoBehaviour
                 return gridSize * gridSize * gridSize;
 
             case VoxelShape.Sphere:
-                // 簡化計算，實際上球體的體素數量會根據半徑變化
                 Vector3 center = new Vector3(gridSize * 0.5f, gridSize * 0.5f, gridSize * 0.5f);
                 float radius = gridSize * 0.4f;
                 int count = 0;
@@ -897,7 +858,6 @@ public class CubeCarvingSystem : MonoBehaviour
 
             case VoxelShape.Capsule:
             case VoxelShape.Cylinder:
-                // 簡化計算
                 return Mathf.RoundToInt(gridSize * gridSize * gridSize * 0.7f);
 
             default:

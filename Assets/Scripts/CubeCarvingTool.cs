@@ -45,8 +45,6 @@ public class CubeCarvingTool : MonoBehaviour
                 }
             }
         }
-
-        Debug.Log($"Generated {carvingPoints.Length} carving points in tool volume");
     }
 
     public bool IsActive()
