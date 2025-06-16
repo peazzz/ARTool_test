@@ -918,9 +918,6 @@ public class ObjectSaveLoadSystem : MonoBehaviour
 
     private GameObject CreateVoxelizedObject(Mesh mesh, string objectName)
     {
-        if (enableDebugLogs)
-            Debug.Log($"Starting voxelization for: {objectName}");
-
         VoxelizationResult voxelResult = VoxelizeMesh(mesh);
 
         if (!voxelResult.success)
@@ -951,22 +948,57 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         if (carvingSystem != null)
         {
             float cubeSize = targetObjectSize;
-
             carvingSystem.SetParameters(cubeSize, voxelResolution, VoxelShape.Cube);
-
             StartCoroutine(ApplyVoxelDataDelayed(carvingSystem, voxelResult.voxelData));
         }
+
+        DualMaterialManager dualManager = newObject.GetComponent<DualMaterialManager>();
+        if (!dualManager)
+            dualManager = newObject.AddComponent<DualMaterialManager>();
+
+        SculptFunction sculptFunction = FindObjectOfType<SculptFunction>();
+        if (sculptFunction)
+        {
+            if (sculptFunction.ColorMaterial)
+            {
+                dualManager.paintMaterial = sculptFunction.ColorMaterial;
+            }
+
+            if (sculptFunction.TextureMaterial)
+            {
+                dualManager.textureMaterial = sculptFunction.TextureMaterial;
+            }
+
+            if (sculptFunction.fcp)
+            {
+                dualManager.SetColor(sculptFunction.fcp.color);
+            }
+        }
+
+        dualManager.SetPaintMode();
 
         int sculptLayer = LayerMask.NameToLayer("SculptObject");
         if (sculptLayer != -1)
             newObject.layer = sculptLayer;
         newObject.tag = "SculptObject";
 
-        if (enableDebugLogs)
+        ModelStat modelStat = newObject.GetComponent<ModelStat>();
+        if (!modelStat)
+            modelStat = newObject.AddComponent<ModelStat>();
+
+        if (modelStat)
         {
-            Debug.Log($"Voxelized object created: {objectName}");
-            Debug.Log($"Voxels: {voxelResult.activeVoxels}/{voxelResult.totalVoxels} " +
-                     $"({(float)voxelResult.activeVoxels / voxelResult.totalVoxels * 100:F1}%)");
+            ModelData modelData = new ModelData(
+                objectName,
+                "VoxelizedMesh",
+                newObject.transform.position,
+                newObject.transform.eulerAngles,
+                newObject.transform.localScale,
+                dualManager.GetCurrentColor(),
+                false,
+                ""
+            );
+            modelStat.SetModelData(modelData);
         }
 
         return newObject;
@@ -1010,14 +1042,50 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         meshFilter.mesh = mesh;
         meshCollider.sharedMesh = mesh;
 
-        Material defaultMaterial = new Material(Shader.Find("Standard"));
-        defaultMaterial.color = Color.white;
-        meshRenderer.material = defaultMaterial;
+        // 改用新的 OBJMaterialManager
+        OBJMaterialManager objMaterialManager = newObject.AddComponent<OBJMaterialManager>();
+
+        SculptFunction sculptFunction = FindObjectOfType<SculptFunction>();
+        if (sculptFunction)
+        {
+            if (sculptFunction.ColorMaterial)
+            {
+                objMaterialManager.paintMaterial = sculptFunction.ColorMaterial;
+            }
+
+            if (sculptFunction.TextureMaterial)
+            {
+                objMaterialManager.textureMaterial = sculptFunction.TextureMaterial;
+            }
+
+            if (sculptFunction.fcp)
+            {
+                objMaterialManager.SetColor(sculptFunction.fcp.color);
+            }
+        }
+
+        objMaterialManager.SetPaintMode();
 
         int sculptLayer = LayerMask.NameToLayer("SculptObject");
         if (sculptLayer != -1)
             newObject.layer = sculptLayer;
-        newObject.tag = "ImportedObject";
+        newObject.tag = "SculptObject";
+
+        ModelStat modelStat = newObject.AddComponent<ModelStat>();
+        if (modelStat)
+        {
+            ModelData modelData = new ModelData(
+                objectName,
+                "ImportedMesh",
+                newObject.transform.position,
+                newObject.transform.eulerAngles,
+                newObject.transform.localScale,
+                objMaterialManager.GetCurrentColor(),
+                false,
+                ""
+            );
+            modelStat.SetModelData(modelData);
+        }
 
         return newObject;
     }

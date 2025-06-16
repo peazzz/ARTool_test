@@ -202,7 +202,7 @@ public class SculptFunction : MonoBehaviour
         SaveButton.SetActive(true);
         SaveButton2.SetActive(true);
         uiManager.inSculpt = true;
-        fcp.color = obj.GetComponent<Renderer>().material.color;
+
         DeselectCurrentObject();
         currentSelectedObject = obj;
         isEditingExistingObject = true;
@@ -210,18 +210,37 @@ public class SculptFunction : MonoBehaviour
         originalLayer = currentSelectedObject.layer;
         SetLayerRecursively(currentSelectedObject, LayerMask.NameToLayer("PreviewObject"));
 
+        DualMaterialManager dualManager = currentSelectedObject.GetComponent<DualMaterialManager>();
+        OBJMaterialManager objManager = currentSelectedObject.GetComponent<OBJMaterialManager>();
+
+        if (dualManager)
+        {
+            fcp.color = dualManager.GetCurrentColor();
+        }
+        else
+        {
+            MeshRenderer renderer = currentSelectedObject.GetComponent<MeshRenderer>();
+            if (renderer && renderer.material)
+            {
+                fcp.color = renderer.material.color;
+            }
+        }
+
         CubeCarvingSystem carvingSystem = currentSelectedObject.GetComponent<CubeCarvingSystem>();
         if (carvingSystem)
         {
             CubeCarvingSystem.ModelState modelState = carvingSystem.GetCurrentModelState();
-
             LoadModelStateToUI(modelState);
-
             SaveOriginalState(modelState);
-
             if (!allCarvingSystems.Contains(carvingSystem)) allCarvingSystems.Add(carvingSystem);
             selectedShape = modelState.shapeType;
             gridSize = modelState.gridSize;
+            GridInputField.interactable = false;
+        }
+        else
+        {
+            LoadParametersFromObject(currentSelectedObject);
+            GridInputField.interactable = true;
         }
 
         uiManager.SculptPanel1?.SetActive(false);
@@ -229,11 +248,22 @@ public class SculptFunction : MonoBehaviour
         uiManager.UIHome?.SetActive(false);
         uiManager.BackButton?.SetActive(true);
         uiManager.BackToPanel2();
-        GridInputField.interactable = false;
+
         UpdateAllUIValues();
         SetDefaultPositionLockState(true);
 
-        obj.GetComponent<Renderer>().material.color = fcp.color;
+        if (dualManager)
+        {
+            dualManager.SetColor(fcp.color);
+        }
+        else if (objManager)
+        {
+            objManager.SetColor(fcp.color);
+        }
+        else
+        {
+            ApplyColorToModel(currentSelectedObject, fcp.color);
+        }
     }
 
     private void LoadModelStateToUI(CubeCarvingSystem.ModelState modelState)
@@ -398,9 +428,14 @@ public class SculptFunction : MonoBehaviour
         if (isEditingExistingObject && currentSelectedObject)
         {
             DualMaterialManager dualManager = currentSelectedObject.GetComponent<DualMaterialManager>();
+            OBJMaterialManager objManager = currentSelectedObject.GetComponent<OBJMaterialManager>();
             if (dualManager)
             {
                 dualManager.SetColor(co);
+            }
+            else if (objManager)
+            {
+                objManager.SetColor(co);
             }
             else
             {
@@ -410,9 +445,15 @@ public class SculptFunction : MonoBehaviour
         else if (previewModel)
         {
             DualMaterialManager dualManager = previewModel.GetComponent<DualMaterialManager>();
+            OBJMaterialManager objManager = previewModel.GetComponent<OBJMaterialManager>();
+
             if (dualManager)
             {
                 dualManager.SetColor(co);
+            }
+            else if (objManager)
+            {
+                objManager.SetColor(co);
             }
             else
             {
@@ -1355,6 +1396,7 @@ public class SculptFunction : MonoBehaviour
         if (targetModel)
         {
             DualMaterialManager dualManager = targetModel.GetComponent<DualMaterialManager>();
+            OBJMaterialManager objManager = targetModel.GetComponent<OBJMaterialManager>();
             if (dualManager)
             {
                 if (loadedTexture)
@@ -1368,6 +1410,19 @@ public class SculptFunction : MonoBehaviour
                     dualManager.SetColor(fcp.color);
                 }
             }
+            else if (objManager)
+            {
+                if (loadedTexture)
+                {
+                    objManager.SetTextureMode(loadedTexture);
+                    objManager.SetColor(fcp.color);
+                }
+                else
+                {
+                    objManager.SetPaintMode();
+                    objManager.SetColor(fcp.color);
+                }
+            }
         }
     }
 
@@ -1377,7 +1432,16 @@ public class SculptFunction : MonoBehaviour
         if (targetModel)
         {
             DualMaterialManager dualManager = targetModel.GetComponent<DualMaterialManager>();
-            dualManager?.ClearTexture();
+            OBJMaterialManager objManager = targetModel.GetComponent<OBJMaterialManager>();
+
+            if (dualManager)
+            {
+                dualManager.ClearTexture();
+            }
+            else if (objManager)
+            {
+                objManager.ClearTexture();
+            }
         }
     }
 
@@ -1387,7 +1451,119 @@ public class SculptFunction : MonoBehaviour
         if (targetModel)
         {
             DualMaterialManager dualManager = targetModel.GetComponent<DualMaterialManager>();
-            return dualManager && dualManager.SupportsPainting();
+            OBJMaterialManager objManager = targetModel.GetComponent<OBJMaterialManager>();
+
+            if (dualManager)
+            {
+                return dualManager.SupportsPainting();
+            }
+            else if (objManager)
+            {
+                return objManager.SupportsPainting();
+            }
+        }
+        return false;
+    }
+
+    public bool HasMaterialManager(GameObject obj)
+    {
+        if (!obj) return false;
+
+        DualMaterialManager dualManager = obj.GetComponent<DualMaterialManager>();
+        OBJMaterialManager objManager = obj.GetComponent<OBJMaterialManager>();
+
+        return dualManager != null || objManager != null;
+    }
+
+    public UVMode GetCurrentUVMode()
+    {
+        GameObject targetModel = isEditingExistingObject ? currentSelectedObject : previewModel;
+        if (targetModel)
+        {
+            CubeCarvingSystem carvingSystem = targetModel.GetComponent<CubeCarvingSystem>();
+            if (carvingSystem)
+            {
+                return carvingSystem.GetUVMode();
+            }
+
+            OBJMaterialManager objManager = targetModel.GetComponent<OBJMaterialManager>();
+            if (objManager)
+            {
+                return objManager.GetUVMode();
+            }
+        }
+        return UVMode.Continuous;
+    }
+
+    public void SetCurrentUVMode(UVMode mode)
+    {
+        GameObject targetModel = isEditingExistingObject ? currentSelectedObject : previewModel;
+        if (targetModel)
+        {
+            CubeCarvingSystem carvingSystem = targetModel.GetComponent<CubeCarvingSystem>();
+            if (carvingSystem)
+            {
+                carvingSystem.SetUVMode(mode);
+                return;
+            }
+
+            OBJMaterialManager objManager = targetModel.GetComponent<OBJMaterialManager>();
+            if (objManager)
+            {
+                objManager.SetUVMode(mode);
+            }
+        }
+    }
+
+    public bool SupportsTextureMode()
+    {
+        GameObject targetModel = isEditingExistingObject ? currentSelectedObject : previewModel;
+        if (targetModel)
+        {
+            DualMaterialManager dualManager = targetModel.GetComponent<DualMaterialManager>();
+            OBJMaterialManager objManager = targetModel.GetComponent<OBJMaterialManager>();
+
+            return dualManager != null || objManager != null;
+        }
+        return false;
+    }
+
+    public Texture2D GetCurrentTexture()
+    {
+        GameObject targetModel = isEditingExistingObject ? currentSelectedObject : previewModel;
+        if (targetModel)
+        {
+            DualMaterialManager dualManager = targetModel.GetComponent<DualMaterialManager>();
+            if (dualManager)
+            {
+                return dualManager.GetCurrentTexture();
+            }
+
+            OBJMaterialManager objManager = targetModel.GetComponent<OBJMaterialManager>();
+            if (objManager)
+            {
+                return objManager.GetCurrentTexture();
+            }
+        }
+        return null;
+    }
+
+    public bool IsInTextureMode()
+    {
+        GameObject targetModel = isEditingExistingObject ? currentSelectedObject : previewModel;
+        if (targetModel)
+        {
+            DualMaterialManager dualManager = targetModel.GetComponent<DualMaterialManager>();
+            if (dualManager)
+            {
+                return dualManager.IsInTextureMode();
+            }
+
+            OBJMaterialManager objManager = targetModel.GetComponent<OBJMaterialManager>();
+            if (objManager)
+            {
+                return objManager.IsInTextureMode();
+            }
         }
         return false;
     }
