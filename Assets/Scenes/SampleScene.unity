@@ -40675,11 +40675,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   cam: {fileID: 1014067141}
-  saveButton: {fileID: 0}
+  saveButton: {fileID: 1188883508}
   loadButton: {fileID: 437895369}
-  saveButton2: {fileID: 0}
+  saveButton2: {fileID: 810908988}
   sculptFunction: {fileID: 1342327334}
-  uiManager: {fileID: 0}
+  uiManager: {fileID: 1342327331}
   autoSaveOnFinish: 1
   saveFileName: ARTool_Object
   showSaveDialog: 1
