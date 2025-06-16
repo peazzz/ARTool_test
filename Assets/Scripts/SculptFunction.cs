@@ -8,6 +8,7 @@ public class SculptFunction : MonoBehaviour
     public Button TestButton;
     public Texture2D TestTexture;
     public GameObject SaveButton;
+    public GameObject SaveButton2;
 
     public GameObject cubeCarvingSystemPrefab;
     public Transform parentObject;
@@ -199,6 +200,7 @@ public class SculptFunction : MonoBehaviour
     public void SelectObject(GameObject obj)
     {
         SaveButton.SetActive(true);
+        SaveButton2.SetActive(true);
         uiManager.inSculpt = true;
         fcp.color = obj.GetComponent<Renderer>().material.color;
         DeselectCurrentObject();
@@ -998,6 +1000,7 @@ public class SculptFunction : MonoBehaviour
         SwitchToHome();
 
         SaveButton.SetActive(false);
+        SaveButton2.SetActive(false);
     }
 
     void CreateNewObject()
@@ -1250,6 +1253,7 @@ public class SculptFunction : MonoBehaviour
         isEditingExistingObject = false;
 
         SaveButton.SetActive(false);
+        SaveButton2.SetActive(false);
     }
 
     public void UpdateAllUIValues()
@@ -1386,11 +1390,5 @@ public class SculptFunction : MonoBehaviour
             return dualManager && dualManager.SupportsPainting();
         }
         return false;
-    }
-
-    public void OnSaveButtonClicked()
-    {
-        if (objectSaveLoadSystem != null)
-            objectSaveLoadSystem.SaveCurrentSelectedObject();
     }
 }

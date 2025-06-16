@@ -92,6 +92,7 @@ public class ObjectSaveLoadSystem : MonoBehaviour
     [Header("UI References")]
     public Button saveButton;
     public Button loadButton;
+    public Button saveButton2;
     public SculptFunction sculptFunction;
     public UIManager uiManager;
 
@@ -105,8 +106,22 @@ public class ObjectSaveLoadSystem : MonoBehaviour
     public Transform spawnParent;
     public GameObject cubeCarvingSystemPrefab;
 
+    [Header("Voxelization Settings")]
+    public int voxelResolution = 32;
+    public float voxelPadding = 0.1f;
+    public bool enableVoxelization = true;
+    public VoxelizationMethod voxelMethod = VoxelizationMethod.Raycast;
+    public float targetObjectSize = 2.0f;
+
     [Header("Debug")]
     public bool enableDebugLogs = true;
+
+    public enum VoxelizationMethod
+    {
+        Raycast,
+        PointSampling,
+        SurfaceDistance
+    }
 
     [System.Serializable]
     private class LoadResult
@@ -124,6 +139,19 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         public string errorMessage;
     }
 
+    [System.Serializable]
+    private class VoxelizationResult
+    {
+        public bool success;
+        public bool[,,] voxelData;
+        public Vector3 voxelSize;
+        public Vector3 boundsCenter;
+        public Vector3 boundsSize;
+        public int totalVoxels;
+        public int activeVoxels;
+        public string errorMessage;
+    }
+
     private void Start()
     {
         SetupButtonEvents();
@@ -137,12 +165,18 @@ public class ObjectSaveLoadSystem : MonoBehaviour
             saveButton.onClick.AddListener(SaveCurrentSelectedObject);
 
         if (loadButton != null)
-            loadButton.onClick.AddListener(ShowLoadFileDialog);
+            loadButton.onClick.AddListener(ShowUnifiedLoadFileDialog);
+
+        if (saveButton2 != null)
+            saveButton2.onClick.AddListener(SaveCurrentSelectedObjectAsOBJ);
     }
 
     private void SetupFileBrowser()
     {
-        FileBrowser.SetFilters(true, new FileBrowser.Filter("JSON Files", ".json"));
+        FileBrowser.SetFilters(true,
+            new FileBrowser.Filter("JSON Files", ".json"),
+            new FileBrowser.Filter("OBJ Files", ".obj"),
+            new FileBrowser.Filter("All Supported", ".json", ".obj"));
 
         string defaultPath = GetObjectsSavePath();
         CreateSaveDirectory();
@@ -161,15 +195,20 @@ public class ObjectSaveLoadSystem : MonoBehaviour
 #endif
     }
 
-    public void ShowLoadFileDialog()
+    public void ShowUnifiedLoadFileDialog()
     {
         string initialPath = GetObjectsSavePath();
+
+        FileBrowser.SetFilters(true,
+            new FileBrowser.Filter("All Supported", ".json", ".obj"),
+            new FileBrowser.Filter("JSON Files", ".json"),
+            new FileBrowser.Filter("OBJ Files", ".obj"));
 
         FileBrowser.ShowLoadDialog(
             onSuccess: (paths) => {
                 if (paths.Length > 0)
                 {
-                    LoadObjectFromFile(paths[0]);
+                    LoadFileBasedOnExtension(paths[0]);
                 }
             },
             onCancel: () => {
@@ -179,9 +218,39 @@ public class ObjectSaveLoadSystem : MonoBehaviour
             allowMultiSelection: false,
             initialPath: initialPath,
             initialFilename: null,
-            title: "Select Object",
+            title: "Select Object File",
             loadButtonText: "Load"
         );
+    }
+
+    private void LoadFileBasedOnExtension(string filePath)
+    {
+        string extension = Path.GetExtension(filePath).ToLower();
+
+        switch (extension)
+        {
+            case ".json":
+                LoadObjectFromFile(filePath);
+                break;
+            case ".obj":
+                LoadOBJFromFile(filePath);
+                break;
+            default:
+                ShowSaveStatus("Unsupported Format", false);
+                StartCoroutine(HideStatusAfterDelay());
+                break;
+        }
+    }
+
+    private IEnumerator HideStatusAfterDelay()
+    {
+        yield return new WaitForSeconds(2f);
+        HideSaveStatus();
+    }
+
+    public void ShowLoadFileDialog()
+    {
+        ShowUnifiedLoadFileDialog();
     }
 
     private void CreateSaveDirectory()
@@ -257,6 +326,24 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         StartCoroutine(SaveObjectCoroutine(selectedObject));
     }
 
+    public void SaveCurrentSelectedObjectAsOBJ()
+    {
+        if (sculptFunction == null)
+        {
+            ShowSaveStatus("Error", false);
+            return;
+        }
+
+        GameObject selectedObject = sculptFunction.currentSelectedObject;
+        if (selectedObject == null)
+        {
+            ShowSaveStatus("Select Object", false);
+            return;
+        }
+
+        StartCoroutine(SaveObjectAsOBJCoroutine(selectedObject));
+    }
+
     private IEnumerator SaveObjectCoroutine(GameObject targetObject)
     {
         ShowSaveStatus("Save...", true);
@@ -283,6 +370,39 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         {
             ShowSaveStatus("Fall", false);
             Debug.LogError($"{e.Message}");
+        }
+
+        yield return new WaitForSeconds(2f);
+        HideSaveStatus();
+    }
+
+    private IEnumerator SaveObjectAsOBJCoroutine(GameObject targetObject)
+    {
+        ShowSaveStatus("Save OBJ...", true);
+
+        try
+        {
+            string objContent = GenerateOBJContent(targetObject);
+            string fileName = GenerateUniqueOBJFileName(targetObject.name);
+            string filePath = Path.Combine(GetObjectsSavePath(), fileName);
+
+            File.WriteAllText(filePath, objContent);
+
+            if (File.Exists(filePath))
+            {
+                ShowSaveStatus($"OBJ: {fileName}", true);
+                if (enableDebugLogs)
+                    Debug.Log($"OBJ file saved: {filePath}");
+            }
+            else
+            {
+                ShowSaveStatus("OBJ Fall", false);
+            }
+        }
+        catch (System.Exception e)
+        {
+            ShowSaveStatus("OBJ Fall", false);
+            Debug.LogError($"Failed to save OBJ: {e.Message}");
         }
 
         yield return new WaitForSeconds(2f);
@@ -316,6 +436,86 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         CollectMaterialData(targetObject, saveData.materials);
 
         return saveData;
+    }
+
+    private string GenerateOBJContent(GameObject targetObject)
+    {
+        MeshFilter meshFilter = targetObject.GetComponent<MeshFilter>();
+        if (meshFilter == null || meshFilter.mesh == null)
+        {
+            throw new System.Exception("No mesh found on target object");
+        }
+
+        Mesh mesh = meshFilter.mesh;
+        Transform transform = targetObject.transform;
+
+        System.Text.StringBuilder objContent = new System.Text.StringBuilder();
+
+        objContent.AppendLine($"# OBJ file exported from ARTool");
+        objContent.AppendLine($"# Object: {targetObject.name}");
+        objContent.AppendLine($"# Exported: {System.DateTime.Now}");
+        objContent.AppendLine($"# Vertices: {mesh.vertexCount}");
+        objContent.AppendLine($"# Triangles: {mesh.triangles.Length / 3}");
+        objContent.AppendLine();
+
+        Vector3[] vertices = mesh.vertices;
+        foreach (Vector3 vertex in vertices)
+        {
+            Vector3 worldVertex = transform.TransformPoint(vertex);
+            objContent.AppendLine($"v {worldVertex.x:F6} {worldVertex.y:F6} {worldVertex.z:F6}");
+        }
+        objContent.AppendLine();
+
+        if (mesh.normals != null && mesh.normals.Length > 0)
+        {
+            Vector3[] normals = mesh.normals;
+            foreach (Vector3 normal in normals)
+            {
+                Vector3 worldNormal = transform.TransformDirection(normal).normalized;
+                objContent.AppendLine($"vn {worldNormal.x:F6} {worldNormal.y:F6} {worldNormal.z:F6}");
+            }
+            objContent.AppendLine();
+        }
+
+        if (mesh.uv != null && mesh.uv.Length > 0)
+        {
+            Vector2[] uvs = mesh.uv;
+            foreach (Vector2 uv in uvs)
+            {
+                objContent.AppendLine($"vt {uv.x:F6} {uv.y:F6}");
+            }
+            objContent.AppendLine();
+        }
+
+        int[] triangles = mesh.triangles;
+        bool hasNormals = mesh.normals != null && mesh.normals.Length > 0;
+        bool hasUVs = mesh.uv != null && mesh.uv.Length > 0;
+
+        for (int i = 0; i < triangles.Length; i += 3)
+        {
+            int v1 = triangles[i] + 1;
+            int v2 = triangles[i + 1] + 1;
+            int v3 = triangles[i + 2] + 1;
+
+            if (hasUVs && hasNormals)
+            {
+                objContent.AppendLine($"f {v1}/{v1}/{v1} {v2}/{v2}/{v2} {v3}/{v3}/{v3}");
+            }
+            else if (hasUVs)
+            {
+                objContent.AppendLine($"f {v1}/{v1} {v2}/{v2} {v3}/{v3}");
+            }
+            else if (hasNormals)
+            {
+                objContent.AppendLine($"f {v1}//{v1} {v2}//{v2} {v3}//{v3}");
+            }
+            else
+            {
+                objContent.AppendLine($"f {v1} {v2} {v3}");
+            }
+        }
+
+        return objContent.ToString();
     }
 
     private void CollectCarvingData(CubeCarvingSystem carvingSystem, SavedObjectData.CarvingData carvingData)
@@ -437,6 +637,23 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         return fileName;
     }
 
+    private string GenerateUniqueOBJFileName(string baseName)
+    {
+        string timestamp = System.DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        string fileName = $"{baseName}_{timestamp}.obj";
+
+        string fullPath = Path.Combine(GetObjectsSavePath(), fileName);
+        int counter = 1;
+        while (File.Exists(fullPath))
+        {
+            fileName = $"{baseName}_{timestamp}_{counter}.obj";
+            fullPath = Path.Combine(GetObjectsSavePath(), fileName);
+            counter++;
+        }
+
+        return fileName;
+    }
+
     public void OpenLoadInterface()
     {
 
@@ -445,6 +662,11 @@ public class ObjectSaveLoadSystem : MonoBehaviour
     public void LoadObjectFromFile(string filePath)
     {
         StartCoroutine(LoadObjectCoroutine(filePath));
+    }
+
+    public void LoadOBJFromFile(string filePath)
+    {
+        StartCoroutine(LoadOBJCoroutine(filePath));
     }
 
     private IEnumerator LoadObjectCoroutine(string filePath)
@@ -476,6 +698,53 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         HideSaveStatus();
     }
 
+    private IEnumerator LoadOBJCoroutine(string filePath)
+    {
+        ShowSaveStatus("Load OBJ...", true);
+
+        if (!File.Exists(filePath))
+        {
+            ShowSaveStatus("No OBJ File", false);
+            yield return new WaitForSeconds(2f);
+            HideSaveStatus();
+            yield break;
+        }
+
+        try
+        {
+            string objContent = File.ReadAllText(filePath);
+            Mesh mesh = ParseOBJContent(objContent);
+
+            if (mesh != null)
+            {
+                GameObject newObject = CreateGameObjectFromMesh(mesh, Path.GetFileNameWithoutExtension(filePath));
+
+                if (newObject != null)
+                {
+                    ShowSaveStatus($"OBJ: {Path.GetFileName(filePath)}", true);
+                    if (enableDebugLogs)
+                        Debug.Log($"OBJ loaded successfully: {filePath}");
+                }
+                else
+                {
+                    ShowSaveStatus("OBJ Create Failed", false);
+                }
+            }
+            else
+            {
+                ShowSaveStatus("OBJ Parse Failed", false);
+            }
+        }
+        catch (System.Exception e)
+        {
+            ShowSaveStatus("OBJ Load Failed", false);
+            Debug.LogError($"Failed to load OBJ: {e.Message}");
+        }
+
+        yield return new WaitForSeconds(2f);
+        HideSaveStatus();
+    }
+
     private LoadResult LoadObjectData(string filePath)
     {
         try
@@ -499,6 +768,543 @@ public class ObjectSaveLoadSystem : MonoBehaviour
                 errorMessage = e.Message
             };
         }
+    }
+
+    private Mesh ParseOBJContent(string objContent)
+    {
+        List<Vector3> vertices = new List<Vector3>();
+        List<Vector3> normals = new List<Vector3>();
+        List<Vector2> uvs = new List<Vector2>();
+        List<int> triangles = new List<int>();
+
+        string[] lines = objContent.Split('\n');
+
+        foreach (string line in lines)
+        {
+            string trimmedLine = line.Trim();
+            if (string.IsNullOrEmpty(trimmedLine) || trimmedLine.StartsWith("#"))
+                continue;
+
+            string[] parts = trimmedLine.Split(new char[] { ' ', '\t' }, System.StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0)
+                continue;
+
+            switch (parts[0])
+            {
+                case "v":
+                    if (parts.Length >= 4)
+                    {
+                        float x = ParseFloat(parts[1]);
+                        float y = ParseFloat(parts[2]);
+                        float z = ParseFloat(parts[3]);
+                        vertices.Add(new Vector3(x, y, z));
+                    }
+                    break;
+
+                case "vn":
+                    if (parts.Length >= 4)
+                    {
+                        float x = ParseFloat(parts[1]);
+                        float y = ParseFloat(parts[2]);
+                        float z = ParseFloat(parts[3]);
+                        normals.Add(new Vector3(x, y, z));
+                    }
+                    break;
+
+                case "vt":
+                    if (parts.Length >= 3)
+                    {
+                        float u = ParseFloat(parts[1]);
+                        float v = ParseFloat(parts[2]);
+                        uvs.Add(new Vector2(u, v));
+                    }
+                    break;
+
+                case "f":
+                    ParseFace(parts, triangles, vertices.Count);
+                    break;
+            }
+        }
+
+        if (vertices.Count == 0 || triangles.Count == 0)
+        {
+            Debug.LogError("Invalid OBJ file: No vertices or faces found");
+            return null;
+        }
+
+        Mesh mesh = new Mesh();
+        mesh.vertices = vertices.ToArray();
+
+        if (triangles.Count > 0)
+            mesh.triangles = triangles.ToArray();
+
+        if (normals.Count == vertices.Count)
+            mesh.normals = normals.ToArray();
+        else
+            mesh.RecalculateNormals();
+
+        if (uvs.Count == vertices.Count)
+            mesh.uv = uvs.ToArray();
+
+        mesh.RecalculateBounds();
+
+        return mesh;
+    }
+
+    private void ParseFace(string[] parts, List<int> triangles, int vertexCount)
+    {
+        List<int> faceIndices = new List<int>();
+
+        for (int i = 1; i < parts.Length; i++)
+        {
+            string[] indices = parts[i].Split('/');
+            if (indices.Length > 0)
+            {
+                int vertexIndex = ParseInt(indices[0]) - 1;
+
+                if (vertexIndex >= 0 && vertexIndex < vertexCount)
+                {
+                    faceIndices.Add(vertexIndex);
+                }
+            }
+        }
+
+        for (int i = 1; i < faceIndices.Count - 1; i++)
+        {
+            triangles.Add(faceIndices[0]);
+            triangles.Add(faceIndices[i]);
+            triangles.Add(faceIndices[i + 1]);
+        }
+    }
+
+    private float ParseFloat(string value)
+    {
+        if (float.TryParse(value, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out float result))
+        {
+            return result;
+        }
+        return 0f;
+    }
+
+    private int ParseInt(string value)
+    {
+        if (int.TryParse(value, out int result))
+        {
+            return result;
+        }
+        return 0;
+    }
+
+    private GameObject CreateGameObjectFromMesh(Mesh mesh, string objectName)
+    {
+        try
+        {
+            if (enableVoxelization)
+            {
+                return CreateVoxelizedObject(mesh, objectName);
+            }
+            else
+            {
+                return CreateSimpleGameObjectFromMesh(mesh, objectName);
+            }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"Failed to create GameObject from mesh: {e.Message}");
+            return null;
+        }
+    }
+
+    private GameObject CreateVoxelizedObject(Mesh mesh, string objectName)
+    {
+        if (enableDebugLogs)
+            Debug.Log($"Starting voxelization for: {objectName}");
+
+        VoxelizationResult voxelResult = VoxelizeMesh(mesh);
+
+        if (!voxelResult.success)
+        {
+            Debug.LogError($"Voxelization failed: {voxelResult.errorMessage}");
+            return CreateSimpleGameObjectFromMesh(mesh, objectName);
+        }
+
+        GameObject newObject;
+        if (cubeCarvingSystemPrefab != null)
+        {
+            newObject = Instantiate(cubeCarvingSystemPrefab);
+        }
+        else
+        {
+            newObject = new GameObject($"Voxelized_{objectName}");
+            newObject.AddComponent<CubeCarvingSystem>();
+        }
+
+        if (spawnParent != null)
+            newObject.transform.SetParent(spawnParent);
+
+        newObject.name = $"Voxelized_{objectName}";
+        newObject.transform.position = cam.transform.position + cam.transform.forward * 1.5f;
+        newObject.transform.rotation = Quaternion.identity;
+
+        CubeCarvingSystem carvingSystem = newObject.GetComponent<CubeCarvingSystem>();
+        if (carvingSystem != null)
+        {
+            float cubeSize = targetObjectSize;
+
+            carvingSystem.SetParameters(cubeSize, voxelResolution, VoxelShape.Cube);
+
+            StartCoroutine(ApplyVoxelDataDelayed(carvingSystem, voxelResult.voxelData));
+        }
+
+        int sculptLayer = LayerMask.NameToLayer("SculptObject");
+        if (sculptLayer != -1)
+            newObject.layer = sculptLayer;
+        newObject.tag = "SculptObject";
+
+        if (enableDebugLogs)
+        {
+            Debug.Log($"Voxelized object created: {objectName}");
+            Debug.Log($"Voxels: {voxelResult.activeVoxels}/{voxelResult.totalVoxels} " +
+                     $"({(float)voxelResult.activeVoxels / voxelResult.totalVoxels * 100:F1}%)");
+        }
+
+        return newObject;
+    }
+
+    private IEnumerator ApplyVoxelDataDelayed(CubeCarvingSystem carvingSystem, bool[,,] voxelData)
+    {
+        yield return null;
+        yield return null;
+
+        carvingSystem.SetVoxelData(voxelData);
+
+        yield return null;
+
+        var generateMeshMethod = typeof(CubeCarvingSystem).GetMethod("GenerateMesh",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        generateMeshMethod?.Invoke(carvingSystem, null);
+
+        if (enableDebugLogs)
+            Debug.Log("Voxel data applied and mesh regenerated");
+    }
+
+    private GameObject CreateSimpleGameObjectFromMesh(Mesh mesh, string objectName)
+    {
+        GameObject newObject = new GameObject($"Imported_{objectName}");
+
+        if (spawnParent != null)
+            newObject.transform.SetParent(spawnParent);
+
+        newObject.transform.position = cam.transform.position + cam.transform.forward * 1.5f;
+        newObject.transform.rotation = Quaternion.identity;
+
+        float meshSize = Mathf.Max(mesh.bounds.size.x, mesh.bounds.size.y, mesh.bounds.size.z);
+        float scaleFactor = targetObjectSize / meshSize;
+        newObject.transform.localScale = Vector3.one * scaleFactor;
+
+        MeshFilter meshFilter = newObject.AddComponent<MeshFilter>();
+        MeshRenderer meshRenderer = newObject.AddComponent<MeshRenderer>();
+        MeshCollider meshCollider = newObject.AddComponent<MeshCollider>();
+
+        meshFilter.mesh = mesh;
+        meshCollider.sharedMesh = mesh;
+
+        Material defaultMaterial = new Material(Shader.Find("Standard"));
+        defaultMaterial.color = Color.white;
+        meshRenderer.material = defaultMaterial;
+
+        int sculptLayer = LayerMask.NameToLayer("SculptObject");
+        if (sculptLayer != -1)
+            newObject.layer = sculptLayer;
+        newObject.tag = "ImportedObject";
+
+        return newObject;
+    }
+
+    private VoxelizationResult VoxelizeMesh(Mesh mesh)
+    {
+        VoxelizationResult result = new VoxelizationResult();
+
+        try
+        {
+            Bounds bounds = mesh.bounds;
+            Vector3 boundsCenter = bounds.center;
+            Vector3 boundsSize = bounds.size;
+
+            boundsSize += Vector3.one * voxelPadding;
+
+            float voxelSize = Mathf.Max(boundsSize.x, boundsSize.y, boundsSize.z) / voxelResolution;
+            Vector3 voxelSizeVec = Vector3.one * voxelSize;
+
+            bool[,,] voxelData = new bool[voxelResolution, voxelResolution, voxelResolution];
+
+            Vector3 startPos = boundsCenter - boundsSize * 0.5f;
+
+            int activeVoxels = 0;
+            int totalVoxels = voxelResolution * voxelResolution * voxelResolution;
+
+            switch (voxelMethod)
+            {
+                case VoxelizationMethod.Raycast:
+                    activeVoxels = VoxelizeWithRaycast(mesh, voxelData, startPos, voxelSize);
+                    break;
+                case VoxelizationMethod.PointSampling:
+                    activeVoxels = VoxelizeWithPointSampling(mesh, voxelData, startPos, voxelSize);
+                    break;
+                case VoxelizationMethod.SurfaceDistance:
+                    activeVoxels = VoxelizeWithSurfaceDistance(mesh, voxelData, startPos, voxelSize);
+                    break;
+            }
+
+            result.success = activeVoxels > 0;
+            result.voxelData = voxelData;
+            result.voxelSize = voxelSizeVec;
+            result.boundsCenter = boundsCenter;
+            result.boundsSize = boundsSize;
+            result.totalVoxels = totalVoxels;
+            result.activeVoxels = activeVoxels;
+
+            if (activeVoxels == 0)
+            {
+                result.errorMessage = "No voxels were activated during voxelization";
+            }
+        }
+        catch (System.Exception e)
+        {
+            result.success = false;
+            result.errorMessage = e.Message;
+        }
+
+        return result;
+    }
+
+    private int VoxelizeWithRaycast(Mesh mesh, bool[,,] voxelData, Vector3 startPos, float voxelSize)
+    {
+        int activeVoxels = 0;
+        Vector3[] vertices = mesh.vertices;
+        int[] triangles = mesh.triangles;
+
+        for (int x = 0; x < voxelResolution; x++)
+        {
+            for (int y = 0; y < voxelResolution; y++)
+            {
+                for (int z = 0; z < voxelResolution; z++)
+                {
+                    Vector3 voxelCenter = startPos + new Vector3(
+                        (x + 0.5f) * voxelSize,
+                        (y + 0.5f) * voxelSize,
+                        (z + 0.5f) * voxelSize
+                    );
+
+                    if (IsPointInsideMesh(voxelCenter, vertices, triangles))
+                    {
+                        voxelData[x, y, z] = true;
+                        activeVoxels++;
+                    }
+                }
+            }
+        }
+
+        return activeVoxels;
+    }
+
+    private int VoxelizeWithPointSampling(Mesh mesh, bool[,,] voxelData, Vector3 startPos, float voxelSize)
+    {
+        int activeVoxels = 0;
+        Vector3[] vertices = mesh.vertices;
+        int[] triangles = mesh.triangles;
+
+        int sampleCount = 8;
+        float sampleStep = voxelSize / 2f;
+
+        for (int x = 0; x < voxelResolution; x++)
+        {
+            for (int y = 0; y < voxelResolution; y++)
+            {
+                for (int z = 0; z < voxelResolution; z++)
+                {
+                    Vector3 voxelMin = startPos + new Vector3(x * voxelSize, y * voxelSize, z * voxelSize);
+
+                    int insideCount = 0;
+                    for (int sx = 0; sx < 2; sx++)
+                    {
+                        for (int sy = 0; sy < 2; sy++)
+                        {
+                            for (int sz = 0; sz < 2; sz++)
+                            {
+                                Vector3 samplePoint = voxelMin + new Vector3(
+                                    sx * sampleStep + sampleStep * 0.5f,
+                                    sy * sampleStep + sampleStep * 0.5f,
+                                    sz * sampleStep + sampleStep * 0.5f
+                                );
+
+                                if (IsPointInsideMesh(samplePoint, vertices, triangles))
+                                {
+                                    insideCount++;
+                                }
+                            }
+                        }
+                    }
+
+                    if (insideCount >= sampleCount / 2)
+                    {
+                        voxelData[x, y, z] = true;
+                        activeVoxels++;
+                    }
+                }
+            }
+        }
+
+        return activeVoxels;
+    }
+
+    private int VoxelizeWithSurfaceDistance(Mesh mesh, bool[,,] voxelData, Vector3 startPos, float voxelSize)
+    {
+        int activeVoxels = 0;
+        Vector3[] vertices = mesh.vertices;
+        int[] triangles = mesh.triangles;
+
+        float threshold = voxelSize * 0.5f;
+
+        for (int x = 0; x < voxelResolution; x++)
+        {
+            for (int y = 0; y < voxelResolution; y++)
+            {
+                for (int z = 0; z < voxelResolution; z++)
+                {
+                    Vector3 voxelCenter = startPos + new Vector3(
+                        (x + 0.5f) * voxelSize,
+                        (y + 0.5f) * voxelSize,
+                        (z + 0.5f) * voxelSize
+                    );
+
+                    float distanceToSurface = GetDistanceToMeshSurface(voxelCenter, vertices, triangles);
+
+                    if (distanceToSurface <= threshold)
+                    {
+                        voxelData[x, y, z] = true;
+                        activeVoxels++;
+                    }
+                }
+            }
+        }
+
+        return activeVoxels;
+    }
+
+    private bool IsPointInsideMesh(Vector3 point, Vector3[] vertices, int[] triangles)
+    {
+        int intersectionCount = 0;
+        Vector3 rayDirection = Vector3.right;
+
+        for (int i = 0; i < triangles.Length; i += 3)
+        {
+            Vector3 v0 = vertices[triangles[i]];
+            Vector3 v1 = vertices[triangles[i + 1]];
+            Vector3 v2 = vertices[triangles[i + 2]];
+
+            if (RayTriangleIntersection(point, rayDirection, v0, v1, v2))
+            {
+                intersectionCount++;
+            }
+        }
+
+        return (intersectionCount % 2) == 1;
+    }
+
+    private bool RayTriangleIntersection(Vector3 rayOrigin, Vector3 rayDirection, Vector3 v0, Vector3 v1, Vector3 v2)
+    {
+        const float EPSILON = 0.0000001f;
+
+        Vector3 edge1 = v1 - v0;
+        Vector3 edge2 = v2 - v0;
+        Vector3 h = Vector3.Cross(rayDirection, edge2);
+        float a = Vector3.Dot(edge1, h);
+
+        if (a > -EPSILON && a < EPSILON)
+            return false;
+
+        float f = 1.0f / a;
+        Vector3 s = rayOrigin - v0;
+        float u = f * Vector3.Dot(s, h);
+
+        if (u < 0.0f || u > 1.0f)
+            return false;
+
+        Vector3 q = Vector3.Cross(s, edge1);
+        float v = f * Vector3.Dot(rayDirection, q);
+
+        if (v < 0.0f || u + v > 1.0f)
+            return false;
+
+        float t = f * Vector3.Dot(edge2, q);
+
+        return t > EPSILON;
+    }
+
+    private float GetDistanceToMeshSurface(Vector3 point, Vector3[] vertices, int[] triangles)
+    {
+        float minDistance = float.MaxValue;
+
+        for (int i = 0; i < triangles.Length; i += 3)
+        {
+            Vector3 v0 = vertices[triangles[i]];
+            Vector3 v1 = vertices[triangles[i + 1]];
+            Vector3 v2 = vertices[triangles[i + 2]];
+
+            float distance = DistancePointToTriangle(point, v0, v1, v2);
+            minDistance = Mathf.Min(minDistance, distance);
+        }
+
+        return minDistance;
+    }
+
+    private float DistancePointToTriangle(Vector3 point, Vector3 a, Vector3 b, Vector3 c)
+    {
+        Vector3 ab = b - a;
+        Vector3 ac = c - a;
+        Vector3 ap = point - a;
+
+        float d1 = Vector3.Dot(ab, ap);
+        float d2 = Vector3.Dot(ac, ap);
+        if (d1 <= 0f && d2 <= 0f) return Vector3.Distance(a, point);
+
+        Vector3 bp = point - b;
+        float d3 = Vector3.Dot(ab, bp);
+        float d4 = Vector3.Dot(ac, bp);
+        if (d3 >= 0f && d4 <= d3) return Vector3.Distance(b, point);
+
+        Vector3 cp = point - c;
+        float d5 = Vector3.Dot(ab, cp);
+        float d6 = Vector3.Dot(ac, cp);
+        if (d6 >= 0f && d5 <= d6) return Vector3.Distance(c, point);
+
+        float vc = d1 * d4 - d3 * d2;
+        if (vc <= 0f && d1 >= 0f && d3 <= 0f)
+        {
+            float v = d1 / (d1 - d3);
+            return Vector3.Distance(point, a + v * ab);
+        }
+
+        float vb = d5 * d2 - d1 * d6;
+        if (vb <= 0f && d2 >= 0f && d6 <= 0f)
+        {
+            float w = d2 / (d2 - d6);
+            return Vector3.Distance(point, a + w * ac);
+        }
+
+        float va = d3 * d6 - d5 * d4;
+        if (va <= 0f && (d4 - d3) >= 0f && (d5 - d6) >= 0f)
+        {
+            float w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+            return Vector3.Distance(point, b + w * (c - b));
+        }
+
+        float denom = 1f / (va + vb + vc);
+        float v2 = vb * denom;
+        float w2 = vc * denom;
+        return Vector3.Distance(point, a + ab * v2 + ac * w2);
     }
 
     private IEnumerator CreateAndValidateObject(SavedObjectData loadData)
@@ -779,6 +1585,21 @@ public class ObjectSaveLoadSystem : MonoBehaviour
     public void ManualSaveObject()
     {
         SaveCurrentSelectedObject();
+    }
+
+    public void ManualSaveObjectAsOBJ()
+    {
+        SaveCurrentSelectedObjectAsOBJ();
+    }
+
+    public void ManualLoadFile()
+    {
+        ShowUnifiedLoadFileDialog();
+    }
+
+    public void ManualLoadOBJ()
+    {
+        ShowUnifiedLoadFileDialog();
     }
 
     public string[] GetSavedObjectFiles()
