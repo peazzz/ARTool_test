@@ -55,8 +55,13 @@ public class Canvas2DManager : MonoBehaviour
     [Header("Undo/Redo System")]
     public Button UndoButton;
     public Button RedoButton;
+    public GameObject GridButton;
     public Button UndoButton_Tablet;
     public Button RedoButton_Tablet;
+    public GameObject GridButton_Tablet;
+
+    public GameObject GridImage;
+    public GameObject GridImage_Tablet;
     [Range(5, 50)]
     public int maxHistoryStates = 20;
 
@@ -73,6 +78,7 @@ public class Canvas2DManager : MonoBehaviour
     public int jpegQuality = 90;
     public bool showSaveDialog = true;
     public Text saveStatusText;
+    private bool isGrid;
 
     public enum ImageFormat
     {
@@ -363,10 +369,12 @@ public class Canvas2DManager : MonoBehaviour
             UndoButton.onClick.AddListener(Undo);
         if (RedoButton != null)
             RedoButton.onClick.AddListener(Redo);
+        
         if (UndoButton_Tablet != null)
             UndoButton_Tablet.onClick.AddListener(Undo);
         if (RedoButton_Tablet != null)
             RedoButton_Tablet.onClick.AddListener(Redo);
+        
 
         SaveCurrentState();
     }
@@ -411,6 +419,38 @@ public class Canvas2DManager : MonoBehaviour
 
         currentHistoryIndex++;
         RestoreState(currentHistoryIndex);
+    }
+
+    public void Grid()
+    {
+        isGrid = !isGrid;
+
+        if (isGrid)
+        {
+            GridImage.SetActive(true);
+            GridButton.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
+        }
+        else
+        {
+            GridImage.SetActive(false);
+            GridButton.GetComponent<Image>().color = new Color(255f / 255f, 255f / 255f, 255f / 255f);
+        }
+    }
+
+    public void Grid_Tablet()
+    {
+        isGrid = !isGrid;
+
+        if (isGrid)
+        {
+            GridImage_Tablet.SetActive(true);
+            GridButton_Tablet.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
+        }
+        else
+        {
+            GridImage_Tablet.SetActive(false);
+            GridButton_Tablet.GetComponent<Image>().color = new Color(255f / 255f, 255f / 255f, 255f / 255f);
+        }
     }
 
     private bool CanUndo()
@@ -601,6 +641,12 @@ public class Canvas2DManager : MonoBehaviour
             Eyedropper_Tablet.GetComponent<Button>().onClick.AddListener(() => { usePen = false; useEraser = false; usePaintBucket = false; useEyedropper = true; SelectTool(0, 0, 0, 1); });
         if (Finish_Tablet != null)
             Finish_Tablet.onClick.AddListener(() => Complete());
+
+        if (GridButton != null)
+            GridButton.GetComponent<Button>().onClick.AddListener(() => Grid());
+
+        if (GridButton_Tablet != null)
+            GridButton_Tablet.GetComponent<Button>().onClick.AddListener(() => Grid_Tablet());
     }
 
     private void SelectTool(float _pen, float _eraser, float _paintBucket, float _eyedropper)

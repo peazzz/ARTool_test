@@ -5,6 +5,7 @@ using UnityEngine.UI;
 using System.IO;
 using System;
 using SimpleFileBrowser;
+using UnityEditor;
 
 [System.Serializable]
 public class SavedObjectData
@@ -176,14 +177,14 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         FileBrowser.SetFilters(true,
             new FileBrowser.Filter("JSON Files", ".json"),
             new FileBrowser.Filter("OBJ Files", ".obj"),
-            new FileBrowser.Filter("All Supported", ".json", ".obj"));
+            new FileBrowser.Filter("All Supported", ".json", ".obj")); //設定檔案篩選
 
-        string defaultPath = GetObjectsSavePath();
-        CreateSaveDirectory();
+        string defaultPath = GetObjectsSavePath(); //設定儲存路徑
+        CreateSaveDirectory(); //路徑不存在則建立路徑
 
         if (Directory.Exists(defaultPath))
         {
-            FileBrowser.AddQuickLink("ARTool Objects", defaultPath, null);
+            FileBrowser.AddQuickLink("ARTool Objects", defaultPath, null); //新增路徑位置至快速連結
         }
 
 #if UNITY_IOS
@@ -1103,7 +1104,7 @@ public class ObjectSaveLoadSystem : MonoBehaviour
             boundsSize += Vector3.one * voxelPadding;
 
             float voxelSize = Mathf.Max(boundsSize.x, boundsSize.y, boundsSize.z) / voxelResolution;
-            Vector3 voxelSizeVec = Vector3.one * voxelSize;
+            Vector3 voxelSizeVec = Vector3.one * voxelSize; 
 
             bool[,,] voxelData = new bool[voxelResolution, voxelResolution, voxelResolution];
 
@@ -1704,5 +1705,58 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         {
             Debug.Log($"Directory does not exist: {path}");
         }
+    }
+
+    public void SaveMeshAsAsset(string meshName = null)
+    {
+        if (sculptFunction.currentSelectedObject == null)
+        {
+            return;
+        }
+
+        var meshFilter = sculptFunction.currentSelectedObject.GetComponent<MeshFilter>();
+        if (meshFilter == null)
+        {
+            return;
+        }
+
+        var mesh = meshFilter.mesh;
+        if (mesh == null || mesh.vertexCount == 0)
+        {
+            return;
+        }
+
+        if (string.IsNullOrEmpty(meshName))
+            meshName = $"SculptedMesh_{sculptFunction.currentSelectedObject.name}_{System.DateTime.Now:yyyyMMdd_HHmmss}";
+
+        string meshPath = $"Assets/SculptedMeshes/{meshName}.asset";
+        string directory = System.IO.Path.GetDirectoryName(meshPath);
+        
+        if (!System.IO.Directory.Exists(directory))
+            System.IO.Directory.CreateDirectory(directory);
+
+        Mesh meshCopy = new Mesh();
+        meshCopy.name = meshName;
+
+        meshCopy.vertices = mesh.vertices;
+        meshCopy.triangles = mesh.triangles;
+        meshCopy.normals = mesh.normals;
+        meshCopy.uv = mesh.uv;
+        meshCopy.bounds = mesh.bounds;
+
+        AssetDatabase.CreateAsset(meshCopy, meshPath);
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+
+        MeshFilter currentMeshFilter = GetComponent<MeshFilter>();
+        if (currentMeshFilter)
+        {
+            currentMeshFilter.mesh = meshCopy;
+        }
+    }
+
+    public void SaveCurrentMesh()
+    {
+        SaveMeshAsAsset();
     }
 }

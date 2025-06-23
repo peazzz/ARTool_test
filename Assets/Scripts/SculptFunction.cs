@@ -163,12 +163,21 @@ public class SculptFunction : MonoBehaviour
         if (isCutButtonPressed)
         {
             CuttingTool.SetActive(true);
-            CuttingTool.transform.localPosition = new Vector3(0, 0, detectedDistance);
-            if (CuttingTool_A)
+
+            if (CuttingTool_A && Mathf.Approximately(CuttingTool_A.value, CuttingTool_A.minValue))
             {
-                Vector3 currentScale = Vector3.one * CuttingTool_A.value;
-                CuttingTool.transform.localScale = currentScale;
+                CuttingTool.transform.localPosition = new Vector3(0, 0, 0.05f);
+                CuttingTool.transform.localScale = Vector3.one * 0.08f;
             }
+            else
+            {
+                CuttingTool.transform.localPosition = new Vector3(0, 0, detectedDistance);
+                if (CuttingTool_A)
+                {
+                    Vector3 currentScale = Vector3.one * CuttingTool_A.value;
+                    CuttingTool.transform.localScale = currentScale;
+                }
+            }      
         }
         else
         {
@@ -390,7 +399,7 @@ public class SculptFunction : MonoBehaviour
         if (CuttingTool_A)
         {
             CuttingTool_A.minValue = 0.001f;
-            CuttingTool_A.maxValue = 1f;
+            CuttingTool_A.maxValue = 0.3f;
             CuttingTool_A.value = 0.05f;
             CuttingTool_A.onValueChanged.AddListener(OnCuttingHeadScaleChanged);
         }
@@ -406,10 +415,29 @@ public class SculptFunction : MonoBehaviour
     private void OnCuttingHeadScaleChanged(float scaleValue)
     {
         if (!CuttingTool || !PreviewCuttingArea) return;
+
+        float actualScale = Mathf.Approximately(scaleValue, CuttingTool_A.minValue) ? 0.08f : scaleValue;
         Vector3 newScale = Vector3.one * scaleValue;
         PreviewCuttingArea.transform.localScale = newScale;
-        if (isCutButtonPressed) CuttingTool.transform.localScale = newScale;
-        else CuttingTool.transform.localScale = Vector3.zero;
+
+        if (isCutButtonPressed)
+        {
+            CuttingTool.transform.localScale = newScale;
+
+            if (Mathf.Approximately(scaleValue, CuttingTool_A.minValue))
+            {
+                CuttingTool.transform.localPosition = new Vector3(0, 0, 0.05f);
+            }
+            else
+            {
+                CuttingTool.transform.localPosition = new Vector3(0, 0, detectedDistance);
+            }
+        }
+        else
+        {
+            CuttingTool.transform.localScale = Vector3.zero;
+        }
+
         CubeCarvingTool carvingTool = CuttingTool.GetComponent<CubeCarvingTool>();
         if (carvingTool)
         {
@@ -704,20 +732,74 @@ public class SculptFunction : MonoBehaviour
     {
         Vector3 cameraPosition = Camera.main.transform.position;
         Vector3 horizontalForward = GetHorizontalForward();
+
         bool shouldRaycast = Time.time - lastRaycastTime > raycastCacheTime;
         if (shouldRaycast)
         {
-            Vector3 rayOrigin = cameraPosition + horizontalForward * dynamicForwardDistance;
-            Ray ray = new Ray(rayOrigin, Vector3.down);
-            int layerMask = LayerMask.NameToLayer("PreviewObject") == -1 ? ~0 : ~(1 << LayerMask.NameToLayer("PreviewObject"));
-            cachedHitResult = Physics.Raycast(ray, out cachedHit, downwardCheckDistance, layerMask);
+            if (uiManager.isGroundChecking)
+            {
+                Vector3 rayDirection = Camera.main.transform.forward;
+                Ray ray = new Ray(cameraPosition, rayDirection);
+                int layerMask = LayerMask.NameToLayer("PreviewObject") == -1 ? ~0 : ~(1 << LayerMask.NameToLayer("PreviewObject"));
+
+                if (Physics.Raycast(ray, out cachedHit, maxDetectionDistance, layerMask))
+                {
+                    cachedHitResult = true;
+
+                    float hitDistance = Vector3.Distance(cameraPosition, cachedHit.point);
+
+                    float minDistance = 0.3f;
+                    float maxDistance = 8f;
+
+                    if (hitDistance < minDistance)
+                    {
+                        cachedHit.point = cameraPosition + rayDirection * minDistance;
+                    }
+                    else if (hitDistance > maxDistance)
+                    {
+                        cachedHit.point = cameraPosition + rayDirection * maxDistance;
+                    }
+                }
+                else
+                {
+                    cachedHitResult = true;
+                    cachedHit.point = cameraPosition + rayDirection * 2f;
+                }
+            }
+            else
+            {
+                Vector3 rayOrigin = cameraPosition + horizontalForward * dynamicForwardDistance;
+                Ray ray = new Ray(rayOrigin, Vector3.down);
+                int layerMask = LayerMask.NameToLayer("PreviewObject") == -1 ? ~0 : ~(1 << LayerMask.NameToLayer("PreviewObject"));
+                cachedHitResult = Physics.Raycast(ray, out cachedHit, downwardCheckDistance, layerMask);
+            }
             lastRaycastTime = Time.time;
         }
-        Vector3 targetPosition = (cachedHitResult && uiManager.isGroundChecking) ? GetGroundPositionForObject(cachedHit.point, targetObject) : GetDefaultPosition(cameraPosition, horizontalForward);
+
+        Vector3 targetPosition = (cachedHitResult && uiManager.isGroundChecking) ?
+            GetAdaptiveGroundPosition(cachedHit.point, targetObject) :
+            GetDefaultPosition(cameraPosition, horizontalForward);
+
         targetObject.transform.position = targetPosition;
         targetObject.transform.rotation = GetModelRotation(horizontalForward);
         lastPreviewPosition = targetObject.transform.position;
         lastPreviewRotation = targetObject.transform.rotation;
+    }
+
+    Vector3 GetAdaptiveGroundPosition(Vector3 hitPoint, GameObject targetObject)
+    {
+        Vector3 position = hitPoint;
+
+        Renderer renderer = targetObject.GetComponent<Renderer>();
+        if (renderer)
+        {
+            float halfHeight = renderer.bounds.extents.y;
+            position.y += halfHeight;
+        }
+
+        position.y += heightOffset;
+
+        return position;
     }
 
     Vector3 GetGroundPositionForObject(Vector3 hitPoint, GameObject targetObject)
@@ -1277,16 +1359,16 @@ public class SculptFunction : MonoBehaviour
     {
         if (!isEditingExistingObject || !currentSelectedObject) return;
 
-        CubeCarvingSystem carvingSystem = currentSelectedObject.GetComponent<CubeCarvingSystem>();
-        if (carvingSystem)
-        {
-            carvingSystem.RevertToSavedState();
-        }
-
-        fcp.onColorChange.RemoveListener(OnChangeColor);
-        fcp.color = originalColor;
-        ColorMaterial.color = originalColor;
-        fcp.onColorChange.AddListener(OnChangeColor);
+        //CubeCarvingSystem carvingSystem = currentSelectedObject.GetComponent<CubeCarvingSystem>();
+        //if (carvingSystem)
+        //{
+        //    carvingSystem.RevertToSavedState();
+        //}
+        //
+        //fcp.onColorChange.RemoveListener(OnChangeColor);
+        //fcp.color = originalColor;
+        //ColorMaterial.color = originalColor;
+        //fcp.onColorChange.AddListener(OnChangeColor);
 
         SetLayerRecursively(currentSelectedObject, originalLayer);
 

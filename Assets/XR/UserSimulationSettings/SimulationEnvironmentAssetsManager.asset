@@ -14,5 +14,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   m_EnvironmentPrefabPaths:
   - Assets/Locaiotns/cc8c44b811e44939bd8d0a55beb210d0.107(MockLocation).prefab
+  - Assets/Locaiotns/Private Mesh - 9B7293F0AC434C8F9179A593DB6224F4(MockLocation).prefab
   - Packages/com.unity.xr.arfoundation/Assets/Prefabs/DefaultSimulationEnvironment.prefab
   m_FallbackAtEndOfList: 1

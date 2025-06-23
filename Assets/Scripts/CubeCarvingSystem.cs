@@ -324,18 +324,48 @@ public class CubeCarvingSystem : MonoBehaviour
             voxelPos + new Vector3(0, 0, voxelSize), voxelPos + new Vector3(voxelSize, 0, voxelSize),
             voxelPos + new Vector3(0, voxelSize, voxelSize), voxelPos + new Vector3(voxelSize, voxelSize, voxelSize)
         };
+
         if (y == 0 || !voxels[x, y - 1, z])
-            AddQuadWithUV(meshVertices, triangles, normals, uvs, new Vector3[] { vertices[0], vertices[1], vertices[5], vertices[4] }, Vector3.down, x, y, z, FaceDirection.Down);
+        {
+            AddQuadWithUV(meshVertices, triangles, normals, uvs,
+                new Vector3[] { vertices[0], vertices[1], vertices[5], vertices[4] }, 
+                Vector3.down, x, y, z, FaceDirection.Down);
+        }
+
         if (y == gridSize - 1 || !voxels[x, y + 1, z])
-            AddQuadWithUV(meshVertices, triangles, normals, uvs, new Vector3[] { vertices[6], vertices[7], vertices[3], vertices[2] }, Vector3.up, x, y, z, FaceDirection.Up);
+        {
+            AddQuadWithUV(meshVertices, triangles, normals, uvs,
+                new Vector3[] { vertices[6], vertices[7], vertices[3], vertices[2] }, 
+                Vector3.up, x, y, z, FaceDirection.Up);
+        }
+
         if (z == gridSize - 1 || !voxels[x, y, z + 1])
-            AddQuadWithUV(meshVertices, triangles, normals, uvs, new Vector3[] { vertices[4], vertices[5], vertices[7], vertices[6] }, Vector3.forward, x, y, z, FaceDirection.Forward);
+        {
+            AddQuadWithUV(meshVertices, triangles, normals, uvs,
+                new Vector3[] { vertices[4], vertices[5], vertices[7], vertices[6] }, 
+                Vector3.forward, x, y, z, FaceDirection.Forward);
+        }
+
         if (z == 0 || !voxels[x, y, z - 1])
-            AddQuadWithUV(meshVertices, triangles, normals, uvs, new Vector3[] { vertices[1], vertices[0], vertices[2], vertices[3] }, Vector3.back, x, y, z, FaceDirection.Back);
+        {
+            AddQuadWithUV(meshVertices, triangles, normals, uvs,
+                new Vector3[] { vertices[1], vertices[0], vertices[2], vertices[3] }, 
+                Vector3.back, x, y, z, FaceDirection.Back);
+        }
+
         if (x == gridSize - 1 || !voxels[x + 1, y, z])
-            AddQuadWithUV(meshVertices, triangles, normals, uvs, new Vector3[] { vertices[1], vertices[3], vertices[7], vertices[5] }, Vector3.right, x, y, z, FaceDirection.Right);
+        {
+            AddQuadWithUV(meshVertices, triangles, normals, uvs,
+                new Vector3[] { vertices[1], vertices[3], vertices[7], vertices[5] }, 
+                Vector3.right, x, y, z, FaceDirection.Right);
+        }
+
         if (x == 0 || !voxels[x - 1, y, z])
-            AddQuadWithUV(meshVertices, triangles, normals, uvs, new Vector3[] { vertices[0], vertices[4], vertices[6], vertices[2] }, Vector3.left, x, y, z, FaceDirection.Left);
+        {
+            AddQuadWithUV(meshVertices, triangles, normals, uvs,
+                new Vector3[] { vertices[0], vertices[4], vertices[6], vertices[2] }, 
+                Vector3.left, x, y, z, FaceDirection.Left);
+        }
     }
 
     void AddQuadWithUV(List<Vector3> meshVertices, List<int> triangles, List<Vector3> normals, List<Vector2> uvs, Vector3[] quadVertices, Vector3 normal, int voxelX, int voxelY, int voxelZ, FaceDirection face)
