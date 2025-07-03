@@ -177,14 +177,14 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         FileBrowser.SetFilters(true,
             new FileBrowser.Filter("JSON Files", ".json"),
             new FileBrowser.Filter("OBJ Files", ".obj"),
-            new FileBrowser.Filter("All Supported", ".json", ".obj")); //³]©wÀÉ®×¿z¿ï
+            new FileBrowser.Filter("All Supported", ".json", ".obj")); //ï¿½]ï¿½wï¿½É®×¿zï¿½ï¿½
 
-        string defaultPath = GetObjectsSavePath(); //³]©wÀx¦s¸ô®|
-        CreateSaveDirectory(); //¸ô®|¤£¦s¦b«h«Ø¥ß¸ô®|
+        string defaultPath = GetObjectsSavePath(); //ï¿½]ï¿½wï¿½xï¿½sï¿½ï¿½ï¿½|
+        CreateSaveDirectory(); //ï¿½ï¿½ï¿½|ï¿½ï¿½ï¿½sï¿½bï¿½hï¿½Ø¥ß¸ï¿½ï¿½|
 
         if (Directory.Exists(defaultPath))
         {
-            FileBrowser.AddQuickLink("ARTool Objects", defaultPath, null); //·s¼W¸ô®|¦ì¸m¦Ü§Ö³t³sµ²
+            FileBrowser.AddQuickLink("ARTool Objects", defaultPath, null); //ï¿½sï¿½Wï¿½ï¿½ï¿½|ï¿½ï¿½mï¿½Ü§Ö³tï¿½sï¿½ï¿½
         }
 
 #if UNITY_IOS
@@ -1043,7 +1043,7 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         meshFilter.mesh = mesh;
         meshCollider.sharedMesh = mesh;
 
-        // §ï¥Î·sªº OBJMaterialManager
+        // ï¿½ï¿½Î·sï¿½ï¿½ OBJMaterialManager
         OBJMaterialManager objMaterialManager = newObject.AddComponent<OBJMaterialManager>();
 
         SculptFunction sculptFunction = FindObjectOfType<SculptFunction>();
@@ -1705,58 +1705,5 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         {
             Debug.Log($"Directory does not exist: {path}");
         }
-    }
-
-    public void SaveMeshAsAsset(string meshName = null)
-    {
-        if (sculptFunction.currentSelectedObject == null)
-        {
-            return;
-        }
-
-        var meshFilter = sculptFunction.currentSelectedObject.GetComponent<MeshFilter>();
-        if (meshFilter == null)
-        {
-            return;
-        }
-
-        var mesh = meshFilter.mesh;
-        if (mesh == null || mesh.vertexCount == 0)
-        {
-            return;
-        }
-
-        if (string.IsNullOrEmpty(meshName))
-            meshName = $"SculptedMesh_{sculptFunction.currentSelectedObject.name}_{System.DateTime.Now:yyyyMMdd_HHmmss}";
-
-        string meshPath = $"Assets/SculptedMeshes/{meshName}.asset";
-        string directory = System.IO.Path.GetDirectoryName(meshPath);
-        
-        if (!System.IO.Directory.Exists(directory))
-            System.IO.Directory.CreateDirectory(directory);
-
-        Mesh meshCopy = new Mesh();
-        meshCopy.name = meshName;
-
-        meshCopy.vertices = mesh.vertices;
-        meshCopy.triangles = mesh.triangles;
-        meshCopy.normals = mesh.normals;
-        meshCopy.uv = mesh.uv;
-        meshCopy.bounds = mesh.bounds;
-
-        AssetDatabase.CreateAsset(meshCopy, meshPath);
-        AssetDatabase.SaveAssets();
-        AssetDatabase.Refresh();
-
-        MeshFilter currentMeshFilter = GetComponent<MeshFilter>();
-        if (currentMeshFilter)
-        {
-            currentMeshFilter.mesh = meshCopy;
-        }
-    }
-
-    public void SaveCurrentMesh()
-    {
-        SaveMeshAsAsset();
     }
 }

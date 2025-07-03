@@ -295,24 +295,45 @@ public class PaintManager : MonoBehaviour
                 if (targetX >= 0 && targetX < textureSize &&
                     targetY >= 0 && targetY < textureSize)
                 {
-                    float distance = Mathf.Sqrt(x * x + y * y);
+                    float strength = CalculateSquareBrushStrength(x, y, brushRadius);
 
-                    if (distance <= brushRadius)
-                    {
-                        float strength = CalculateBrushStrength(distance, brushRadius);
+                    Color currentColor = paintTexture.GetPixel(targetX, targetY);
+                    Color blendedColor = Color.Lerp(currentColor, paintColor, strength * paintColor.a);
+                    blendedColor.a = Mathf.Max(currentColor.a, strength * paintColor.a);
 
-                        Color currentColor = paintTexture.GetPixel(targetX, targetY);
-
-                        Color blendedColor = Color.Lerp(currentColor, paintColor, strength * paintColor.a);
-                        blendedColor.a = Mathf.Max(currentColor.a, strength * paintColor.a);
-
-                        paintTexture.SetPixel(targetX, targetY, blendedColor);
-                    }
+                    paintTexture.SetPixel(targetX, targetY, blendedColor);
                 }
             }
         }
 
         paintTexture.Apply();
+    }
+
+    float CalculateSquareBrushStrength(int x, int y, int brushRadius)
+    {
+        if (brushRadius <= 0) return 1f;
+
+        // 計算到邊界的距離（方形）
+        int distanceToEdgeX = brushRadius - Mathf.Abs(x);
+        int distanceToEdgeY = brushRadius - Mathf.Abs(y);
+        int minDistanceToEdge = Mathf.Min(distanceToEdgeX, distanceToEdgeY);
+
+        // 計算軟邊緣
+        float softEdgePixels = brushSoftness * brushRadius;
+    
+        if (minDistanceToEdge >= softEdgePixels)
+        {
+            return 1f; // 完全不透明的中心區域
+        }
+        else if (minDistanceToEdge > 0)
+        {
+            // 軟邊緣漸變
+            return (float)minDistanceToEdge / softEdgePixels;
+        }
+        else
+        {
+            return 0f;
+        }
     }
 
     float CalculateBrushStrength(float distance, float brushRadius)
@@ -426,4 +447,37 @@ public class PaintManager : MonoBehaviour
     {
         brushSize = size;
     }
+
+    public void EnsurePaintTextureExists()
+{
+    targetRenderer = GetComponent<Renderer>();
+    carvingSystem = GetComponent<CubeCarvingSystem>();
+    
+    if (targetRenderer == null || carvingSystem == null)
+    {
+        return;
+    }
+
+    if (paintTexture == null)
+    {
+        CreatePaintTexture();
+    }
+    
+    if (materialInstance == null || targetRenderer.material == materialInstance)
+    {
+        CreateMaterialInstance();
+    }
+    else
+    {
+        materialInstance.SetTexture("_PaintTexture", paintTexture);
+        materialInstance.SetFloat("_PaintOpacity", 1.0f);
+        
+        if (materialInstance.HasProperty("_UsePaintTexture"))
+        {
+            materialInstance.SetFloat("_UsePaintTexture", 1.0f);
+        }
+        
+        targetRenderer.material = materialInstance;
+    }
+}
 }

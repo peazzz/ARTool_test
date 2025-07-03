@@ -58,7 +58,7 @@ Shader "Custom/DoubleSidedTransparentDepthOcclusionLit"
 
             fixed3 amb = UNITY_LIGHTMODEL_AMBIENT.xyz;
 
-            col.rgb *= (amb + diff);
+            col.rgb = lerp(col.rgb, col.rgb * (amb + diff), 0.8);
             return col;
         }
         ENDCG

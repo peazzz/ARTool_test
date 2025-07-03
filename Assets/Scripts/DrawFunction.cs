@@ -31,6 +31,7 @@ public class DrawFunction : MonoBehaviour
     private Vector3 lastParticlePosition;
     public GameObject Warning, WarningText_Texture, WarningText_2DPaint, OkButton, LeaveButton, CancelButton, Distance;
     public Button UndoButton, ResetButton, FinishButton, ClearAllButton;
+    public GameObject FinishButtonObj;
     public Slider WidthSlider, ScaleSlider, DistanceSlider, GapSlider;
     public InputField WidthInputField, ScaleInputField, DistanceInputField, GapInputField;
 
@@ -65,6 +66,8 @@ public class DrawFunction : MonoBehaviour
     private Vector2 lastInputPosition;
     private float inputSensitivity = 2f;
 
+    public GameObject ClearAll;
+
     void Start()
     {
         SetupAllButtonEvents();
@@ -97,7 +100,7 @@ public class DrawFunction : MonoBehaviour
     void SetupAllButtonEvents()
     {
         _3DDraw?.onClick.AddListener(() => {
-            LineBrush = true; ParticleBrush = false; in3DDraw = true; in2DDraw = false;
+            LineBrush = true; ParticleBrush = false; in3DDraw = true; in2DDraw = false; ClearAll.SetActive(true);
             DrawPanel.SetActive(true); uiManager.SwitchToPanel(uiManager.BrushPanel);
             uiManager.SetUIVisibility(false); uiManager.UI_on = false;
             LineBrushSelection(); SpaceModeSelection();
@@ -1143,6 +1146,7 @@ public class DrawFunction : MonoBehaviour
         waitingForSecondPoint = false;
         if (tempLineRenderer) { Destroy(tempLineRenderer.gameObject); tempLineRenderer = null; }
         currentPaintManager = null; lastHitObject = null; SpaceModeSelection();
+        ClearAll.SetActive(false);
 
         ResetParticleSettings();
     }

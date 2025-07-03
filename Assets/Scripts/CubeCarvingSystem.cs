@@ -1,6 +1,5 @@
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 
 public enum VoxelShape { Cube, Sphere, Capsule, Cylinder }
@@ -14,7 +13,7 @@ public struct ModelData
     public Color materialColor;
     public bool hasTexture;
     public string textureName;
-
+    
     public ModelData(string filename, string shapeType, Vector3 position, Vector3 rotation, Vector3 scale, Color color, bool hasTexture = false, string textureName = "")
     {
         this.filename = filename;
@@ -68,6 +67,8 @@ public class CubeCarvingSystem : MonoBehaviour
 
     private ModelState savedState;
     private bool hasSavedState = false;
+    private int maxCarveDepth = 1;
+    private bool isFillMode = false;
 
     private class UVRegion
     {
@@ -207,6 +208,11 @@ public class CubeCarvingSystem : MonoBehaviour
         CheckCarvingCollisions();
     }
 
+    public void SetSculptMode(bool fillMode)
+    {
+        isFillMode = fillMode;
+    }
+
     void CheckCarvingCollisions()
     {
         if (!carvingEnabled || Time.time - lastMeshUpdateTime < meshUpdateDelay) return;
@@ -223,6 +229,7 @@ public class CubeCarvingSystem : MonoBehaviour
         bool modified = false;
         Vector3[] toolPoints = tool.GetCarvingPoints();
         if (toolPoints?.Length == 0) return false;
+
         foreach (Vector3 toolPoint in toolPoints)
         {
             Vector3 localPoint = transform.InverseTransformPoint(toolPoint);
@@ -234,11 +241,16 @@ public class CubeCarvingSystem : MonoBehaviour
                 Vector3Int voxelPos = WorldToVoxel(localPoint);
                 if (voxelPos.x >= 0 && voxelPos.x < gridSize &&
                     voxelPos.y >= 0 && voxelPos.y < gridSize &&
-                    voxelPos.z >= 0 && voxelPos.z < gridSize &&
-                    voxels[voxelPos.x, voxelPos.y, voxelPos.z])
+                    voxelPos.z >= 0 && voxelPos.z < gridSize)
                 {
-                    voxels[voxelPos.x, voxelPos.y, voxelPos.z] = false;
-                    modified = true;
+                    bool currentState = voxels[voxelPos.x, voxelPos.y, voxelPos.z];
+                    bool targetState = isFillMode ? true : false;
+                    
+                    if (currentState != targetState)
+                    {
+                        voxels[voxelPos.x, voxelPos.y, voxelPos.z] = targetState;
+                        modified = true;
+                    }
                 }
             }
         }
@@ -269,15 +281,11 @@ public class CubeCarvingSystem : MonoBehaviour
         reusableUVs.Clear();
         float voxelSize = cubeSize / gridSize;
 
-        int processedVoxels = 0;
         for (int x = 0; x < gridSize; x++)
             for (int y = 0; y < gridSize; y++)
                 for (int z = 0; z < gridSize; z++)
                     if (voxels[x, y, z])
-                    {
                         GenerateVoxelFaces(x, y, z, voxelSize, reusableVertices, reusableTriangles, reusableNormals, reusableUVs);
-                        processedVoxels++;
-                    }
 
         if (!mesh) mesh = new Mesh { name = $"VoxelMesh_{shapeType}" };
         mesh.Clear();
@@ -772,27 +780,17 @@ public class CubeCarvingSystem : MonoBehaviour
         return clone;
     }
 
-
     public void SetVoxelData(bool[,,] newVoxelData)
     {
-        if (newVoxelData == null)
-        {
-            return;
-        }
+        if (newVoxelData == null) return;
 
         int xSize = newVoxelData.GetLength(0);
         int ySize = newVoxelData.GetLength(1);
         int zSize = newVoxelData.GetLength(2);
 
-        reusableVertices.Clear();
-        reusableTriangles.Clear();
-        reusableNormals.Clear();
-        reusableUVs.Clear();
-
         if (xSize != gridSize || ySize != gridSize || zSize != gridSize)
         {
             gridSize = Mathf.Max(xSize, ySize, zSize);
-
             int newEstimatedSize = gridSize * gridSize * 24;
             reusableVertices.Capacity = Mathf.Max(reusableVertices.Count, newEstimatedSize);
             reusableTriangles.Capacity = Mathf.Max(reusableTriangles.Count, newEstimatedSize * 6);
@@ -801,7 +799,6 @@ public class CubeCarvingSystem : MonoBehaviour
         }
 
         voxels = CloneVoxelArray(newVoxelData);
-
         GenerateMesh();
 
         if (meshCollider && mesh)
@@ -811,19 +808,6 @@ public class CubeCarvingSystem : MonoBehaviour
         }
 
         NotifyModelStatUpdate();
-
-        if (meshRenderer && meshFilter)
-        {
-            meshFilter.mesh = mesh;
-            meshRenderer.enabled = false;
-            meshRenderer.enabled = true;
-        }
-
-        int activeVoxels = 0;
-        for (int x = 0; x < gridSize; x++)
-            for (int y = 0; y < gridSize; y++)
-                for (int z = 0; z < gridSize; z++)
-                    if (voxels[x, y, z]) activeVoxels++;
     }
 
     private IEnumerator UpdateMeshColliderDelayed()
@@ -893,5 +877,15 @@ public class CubeCarvingSystem : MonoBehaviour
             default:
                 return gridSize * gridSize * gridSize;
         }
+    }
+
+    public void SetCarveDepth(int depth)
+    {
+        maxCarveDepth = Mathf.Clamp(depth, 1, 5);
+    }
+    
+    public int GetCarveDepth()
+    {
+        return maxCarveDepth;
     }
 }

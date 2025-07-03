@@ -78,7 +78,7 @@ public class Canvas2DManager : MonoBehaviour
     public int jpegQuality = 90;
     public bool showSaveDialog = true;
     public Text saveStatusText;
-    private bool isGrid;
+    private bool isGrid = true;
 
     public enum ImageFormat
     {
@@ -108,7 +108,7 @@ public class Canvas2DManager : MonoBehaviour
 
     private bool isCurrentlyTablet = false;
 
-    #region Image Save System - ¨Ï¥Î Native Gallery
+    #region Image Save System - ï¿½Ï¥ï¿½ Native Gallery
 
     public void SaveImageToDevice()
     {
@@ -357,6 +357,8 @@ public class Canvas2DManager : MonoBehaviour
         usePaintBucket = false;
         useEyedropper = false;
         SelectTool(1, 0, 0, 0);
+        Grid();
+        Grid_Tablet();
     }
 
     #region Undo/Redo System

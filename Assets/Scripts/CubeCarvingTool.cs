@@ -4,10 +4,10 @@ public class CubeCarvingTool : MonoBehaviour
 {
     [SerializeField] private Vector3 toolSize = new Vector3(0.2f, 0.1f, 0.2f);
     [SerializeField] private int samplingDensity = 4;
-
     [SerializeField] private bool showToolBounds = true;
     [SerializeField] private Color toolColor = Color.blue;
     [SerializeField] private bool showCarvingPoints = true;
+    [SerializeField] private int carveDepth = 1;
 
     private Vector3[] carvingPoints;
 
@@ -18,33 +18,31 @@ public class CubeCarvingTool : MonoBehaviour
 
     void GenerateCarvingPoints()
     {
-        int totalPoints = samplingDensity * samplingDensity * samplingDensity;
-        carvingPoints = new Vector3[totalPoints];
+        if (samplingDensity <= 0) samplingDensity = 1;
+    
+    int totalPoints = samplingDensity * samplingDensity;
+    carvingPoints = new Vector3[totalPoints];
 
-        Vector3 halfSize = toolSize * 0.5f;
-        int index = 0;
+    Vector3 halfSize = toolSize * 0.5f;
+    int index = 0;
 
-        for (int x = 0; x < samplingDensity; x++)
+    for (int x = 0; x < samplingDensity; x++)
+    {
+        for (int y = 0; y < samplingDensity; y++)
         {
-            for (int y = 0; y < samplingDensity; y++)
-            {
-                for (int z = 0; z < samplingDensity; z++)
-                {
-                    float normalizedX = (float)x / (samplingDensity - 1);
-                    float normalizedY = (float)y / (samplingDensity - 1);
-                    float normalizedZ = (float)z / (samplingDensity - 1);
+            float normalizedX = samplingDensity == 1 ? 0.5f : (float)x / (samplingDensity - 1);
+            float normalizedY = samplingDensity == 1 ? 0.5f : (float)y / (samplingDensity - 1);
 
-                    Vector3 localPoint = new Vector3(
-                        Mathf.Lerp(-halfSize.x, halfSize.x, normalizedX),
-                        Mathf.Lerp(-halfSize.y, halfSize.y, normalizedY),
-                        Mathf.Lerp(-halfSize.z, halfSize.z, normalizedZ)
-                    );
+            Vector3 localPoint = new Vector3(
+                Mathf.Lerp(-halfSize.x, halfSize.x, normalizedX),
+                Mathf.Lerp(-halfSize.y, halfSize.y, normalizedY),
+                0f
+            );
 
-                    carvingPoints[index] = localPoint;
-                    index++;
-                }
-            }
+            carvingPoints[index] = localPoint;
+            index++;
         }
+    }
     }
 
     public bool IsActive()
@@ -104,5 +102,15 @@ public class CubeCarvingTool : MonoBehaviour
                 Gizmos.DrawSphere(worldPoint, 0.005f);
             }
         }
+    }
+
+    public void SetCarveDepth(int depth)
+    {
+        carveDepth = Mathf.Clamp(depth, 1, 5);
+    }
+    
+    public int GetCarveDepth()
+    {
+        return carveDepth;
     }
 }
