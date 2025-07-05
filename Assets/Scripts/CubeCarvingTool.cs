@@ -19,30 +19,48 @@ public class CubeCarvingTool : MonoBehaviour
     void GenerateCarvingPoints()
     {
         if (samplingDensity <= 0) samplingDensity = 1;
-    
-    int totalPoints = samplingDensity * samplingDensity;
-    carvingPoints = new Vector3[totalPoints];
 
-    Vector3 halfSize = toolSize * 0.5f;
-    int index = 0;
+        // 3D採樣：samplingDensity^3 個點
+        int totalPoints = samplingDensity * samplingDensity * samplingDensity;
+        carvingPoints = new Vector3[totalPoints];
 
-    for (int x = 0; x < samplingDensity; x++)
-    {
-        for (int y = 0; y < samplingDensity; y++)
+        Vector3 halfSize = toolSize * 0.5f;
+        int index = 0;
+
+        for (int x = 0; x < samplingDensity; x++)
         {
-            float normalizedX = samplingDensity == 1 ? 0.5f : (float)x / (samplingDensity - 1);
-            float normalizedY = samplingDensity == 1 ? 0.5f : (float)y / (samplingDensity - 1);
+            for (int y = 0; y < samplingDensity; y++)
+            {
+                for (int z = 0; z < samplingDensity; z++)
+                {
+                    // 3D均勻分佈計算
+                    float normalizedX, normalizedY, normalizedZ;
 
-            Vector3 localPoint = new Vector3(
-                Mathf.Lerp(-halfSize.x, halfSize.x, normalizedX),
-                Mathf.Lerp(-halfSize.y, halfSize.y, normalizedY),
-                0f
-            );
+                    if (samplingDensity == 1)
+                    {
+                        normalizedX = 0.5f;
+                        normalizedY = 0.5f;
+                        normalizedZ = 0.5f;
+                    }
+                    else
+                    {
+                        // 在每個3D網格單元的中心採樣
+                        normalizedX = (x + 0.5f) / samplingDensity;
+                        normalizedY = (y + 0.5f) / samplingDensity;
+                        normalizedZ = (z + 0.5f) / samplingDensity;
+                    }
 
-            carvingPoints[index] = localPoint;
-            index++;
+                    Vector3 localPoint = new Vector3(
+                        Mathf.Lerp(-halfSize.x, halfSize.x, normalizedX),
+                        Mathf.Lerp(-halfSize.y, halfSize.y, normalizedY),
+                        Mathf.Lerp(-halfSize.z, halfSize.z, normalizedZ)
+                    );
+
+                    carvingPoints[index] = localPoint;
+                    index++;
+                }
+            }
         }
-    }
     }
 
     public bool IsActive()
@@ -76,7 +94,7 @@ public class CubeCarvingTool : MonoBehaviour
 
     public void SetSamplingDensity(int density)
     {
-        samplingDensity = Mathf.Max(2, density);
+        samplingDensity = Mathf.Max(1, density); // 修正：允許最小值為1
         GenerateCarvingPoints();
     }
 
@@ -108,7 +126,7 @@ public class CubeCarvingTool : MonoBehaviour
     {
         carveDepth = Mathf.Clamp(depth, 1, 5);
     }
-    
+
     public int GetCarveDepth()
     {
         return carveDepth;

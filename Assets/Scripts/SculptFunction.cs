@@ -94,8 +94,8 @@ public class SculptFunction : MonoBehaviour
     private int currentCarveDepth = 1;
     private int maxDepth;
 
-    [SerializeField] private float sculptingInterval = 0.3f;
-[SerializeField] private float sculptingDuration = 0.1f;
+    //[SerializeField] private float sculptingInterval = 0.3f;
+    [SerializeField] private float sculptingDuration = 0.1f;
 private float lastSculptTime = 0f;
 private bool isSculptingActive = false;
 private float sculptStartTime = 0f;
@@ -109,6 +109,16 @@ private float sculptStartTime = 0f;
     public SculptMode currentSculptMode = SculptMode.Carve;
     public Text SculptHint;
     public GameObject Hint;
+
+    [Header("Movement-based Sculpting")]
+    [SerializeField] private float movementThreshold = 0.05f;  // 移動閾值距離
+    [SerializeField] private float sculptingInterval = 0.1f;   // 雕刻間隔
+    [SerializeField] private bool enableMovementBasedSculpting = true;
+
+    // 移動檢測相關變數
+    private Vector3 lastSculptPosition = Vector3.zero;
+    private bool hasInitialSculptPosition = false;
+    private float lastMovementSculptTime = 0f;
 
     void Start()
     {
@@ -171,39 +181,78 @@ private float sculptStartTime = 0f;
     private void UpdateCarvingState()
     {
         if (Time.frameCount % 60 == 0) RefreshCarvingSystems();
-    
+
         bool shouldCarve = false;
-        
+
         if (isInSculptMode && isActiveSculpting)
         {
             float currentTime = Time.time;
-            
-            if (!isSculptingActive && currentTime - lastSculptTime >= sculptingInterval)
+
+            if (enableMovementBasedSculpting)
             {
-                isSculptingActive = true;
-                sculptStartTime = currentTime;
-                lastSculptTime = currentTime;
-                shouldCarve = true;
+                // 使用移動距離檢測
+                shouldCarve = CheckMovementBasedSculpting();
             }
-            else if (isSculptingActive && currentTime - sculptStartTime >= sculptingDuration)
+            else
             {
-                isSculptingActive = false;
-                shouldCarve = false;
-            }
-            else if (isSculptingActive)
-            {
-                shouldCarve = true;
+                // 原本的時間間隔檢測
+                if (!isSculptingActive && currentTime - lastSculptTime >= sculptingInterval)
+                {
+                    isSculptingActive = true;
+                    sculptStartTime = currentTime;
+                    lastSculptTime = currentTime;
+                    shouldCarve = true;
+                }
+                else if (isSculptingActive && currentTime - sculptStartTime >= sculptingDuration)
+                {
+                    isSculptingActive = false;
+                    shouldCarve = false;
+                }
+                else if (isSculptingActive)
+                {
+                    shouldCarve = true;
+                }
             }
         }
-        
+
         foreach (CubeCarvingSystem system in allCarvingSystems)
         {
-            if (system) 
+            if (system)
             {
                 system.SetCarvingEnabled(shouldCarve);
                 system.SetSculptMode(currentSculptMode == SculptMode.Fill);
             }
         }
+    }
+
+    private bool CheckMovementBasedSculpting()
+    {
+        if (!hasInitialSculptPosition)
+        {
+            // 第一次雕刻，直接觸發
+            lastSculptPosition = sculptHitPoint;
+            hasInitialSculptPosition = true;
+            lastMovementSculptTime = Time.time;
+            Debug.Log($"初次雕刻位置: {lastSculptPosition}");
+            return true;
+        }
+
+        // 檢查移動距離
+        float distanceMoved = Vector3.Distance(sculptHitPoint, lastSculptPosition);
+        float timeSinceLastSculpt = Time.time - lastMovementSculptTime;
+
+        Debug.Log($"移動距離: {distanceMoved:F3}, 閾值: {movementThreshold}, 時間間隔: {timeSinceLastSculpt:F2}");
+
+        // 如果移動距離超過閾值且有最小時間間隔，則觸發雕刻
+        if (distanceMoved >= movementThreshold && timeSinceLastSculpt >= sculptingInterval)
+        {
+            lastSculptPosition = sculptHitPoint;
+            lastMovementSculptTime = Time.time;
+            Debug.Log($"觸發雕刻！新位置: {lastSculptPosition}");
+            return true;
+        }
+
+        return false;
     }
 
     private void RefreshCarvingSystems()
@@ -1936,7 +1985,7 @@ private float GetSculptScaleValue()
         // 添加新的outline效果
         OutlineEffect outline = previewObj.AddComponent<OutlineEffect>();
         outline.outlineColor = previewOutlineColor;
-        outline.outlineWidth = previewOutlineWidth;
+        //outline.outlineWidth = previewOutlineWidth;
         outline.useOutline = true;
     }
 
@@ -2015,37 +2064,35 @@ private float GetSculptScaleValue()
     private void PositionCuttingToolAtHitPoint(Vector3 hitPoint, Vector3 hitNormal)
     {
         if (!CuttingTool) return;
+        float sculptScale = GetSculptScaleValue();
+        Vector3 toolSize = new Vector3(sculptScale, sculptScale, sculptScale);
+        float offsetDistance = toolSize.magnitude * 0.5f;
+        Vector3 toolPosition = hitPoint;
+        CuttingTool.transform.position = toolPosition;
 
-    CuttingTool.transform.position = hitPoint;
-    
-    if (hitNormal != Vector3.zero)
-    {
-        CuttingTool.transform.rotation = Quaternion.LookRotation(hitNormal);
+        if (hitNormal != Vector3.zero)
+        {
+            CuttingTool.transform.rotation = Quaternion.LookRotation(hitNormal);
+        }
+
+        CuttingTool.SetActive(true);
+        CuttingTool.transform.localScale = toolSize;
     }
 
-    CuttingTool.SetActive(true);
-
-    float sculptScale = GetSculptScaleValue();
-    Vector3 toolScale = new Vector3(sculptScale, sculptScale, sculptScale);
-    CuttingTool.transform.localScale = toolScale;
-    }
-
-    // 新增：開始雕刻操作
     private void StartSculpting(GameObject targetObject, Vector3 hitPoint)
     {
         isActiveSculpting = true;
-    currentSculptTarget = targetObject;
-    lastSculptTime = Time.time - sculptingInterval;
-    isSculptingActive = false;
-    }
+        currentSculptTarget = targetObject;
+        lastSculptTime = Time.time - sculptingInterval;
+        isSculptingActive = false;
 
-    private System.Collections.IEnumerator RepeatSculpting()
-{
-    while (isActiveSculpting)
-    {
-        yield return new WaitForSeconds(0.1f);
+        // 重置移動檢測
+        hasInitialSculptPosition = false;
+        lastSculptPosition = Vector3.zero;
+        lastMovementSculptTime = 0f;
+
+        Debug.Log("開始雕刻會話");
     }
-}
 
 private System.Collections.IEnumerator LimitedDepthCarve(int targetDepth)
 {
@@ -2159,17 +2206,21 @@ private System.Collections.IEnumerator LimitedDepthCarve(int targetDepth)
     private void StopSculpting()
     {
         isActiveSculpting = false;
-    isSculptingActive = false;
-    
-    foreach (CubeCarvingSystem system in allCarvingSystems)
-        if (system) system.SetCarvingEnabled(false);
-    
-    if (CuttingTool)
-    {
-        CuttingTool.SetActive(false);
-    }
-    
-    currentSculptTarget = null;
+        isSculptingActive = false;
+
+        foreach (CubeCarvingSystem system in allCarvingSystems)
+            if (system) system.SetCarvingEnabled(false);
+
+        if (CuttingTool)
+        {
+            CuttingTool.SetActive(false);
+        }
+
+        currentSculptTarget = null;
+
+        // 重置移動檢測
+        hasInitialSculptPosition = false;
+        lastSculptPosition = Vector3.zero;
     }
 
 

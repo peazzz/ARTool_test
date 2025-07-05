@@ -3,7 +3,9 @@ guid: f6648598029097f4aa708636ffad99b7
 MonoImporter:
   externalObjects: {}
   serializedVersion: 2
-  defaultReferences: []
+  defaultReferences:
+  - cubeMaterial: {instanceID: 0}
+  - carvedMaterial: {instanceID: 0}
   executionOrder: 0
   icon: {instanceID: 0}
   userData: 
