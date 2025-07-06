@@ -289,7 +289,7 @@ public class UIManager : MonoBehaviour
                 }
             }
         }
-        else if(drawFunction.TextureMode && sculptFunction.currentSelectedObject != null)
+        else if(drawFunction.TextureMode && !drawFunction.in3DDraw)
         {
             SwitchToPanel(UIHome);
             SetPanelActive(BackButton, false);
