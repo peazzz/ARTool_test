@@ -295,8 +295,11 @@ public class UIManager : MonoBehaviour
             SetPanelActive(BackButton, false);
             FounctionUI.SetActive(true);
             SelectObjectHint.SetActive(false);
-            sculptFunction.SetObjectGlow(sculptFunction.currentSelectedObject, false);
-            sculptFunction.currentSelectedObject = null;
+            if (sculptFunction.currentSelectedObject != null)
+            {
+                sculptFunction.SetObjectGlow(sculptFunction.currentSelectedObject, false);
+                sculptFunction.currentSelectedObject = null;
+            }
             drawFunction.TextureMode = false;
         }
     }
