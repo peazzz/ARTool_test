@@ -833,7 +833,7 @@ public class Canvas2DManager : MonoBehaviour
     public void SetBrushColor(Color color)
     {
         currentBrushColor = color;
-        UpdateUIColorDisplay();
+        //UpdateUIColorDisplay();
     }
 
     public void SetBrushSize(float size)
@@ -1147,18 +1147,18 @@ public class Canvas2DManager : MonoBehaviour
     {
         if (fcp != null)
         {
-            fcp.onColorChange.AddListener(OnColorPickerChanged);
+            //fcp.onColorChange.AddListener(OnColorPickerChanged);
             SetBrushColor(fcp.color);
         }
 
         if (fcp_Tablet != null)
         {
-            fcp_Tablet.onColorChange.AddListener(OnColorPickerChanged);
-            if (fcp != null)
-                fcp_Tablet.color = fcp.color;
+            //fcp_Tablet.onColorChange.AddListener(OnColorPickerChanged);
+            //if (fcp != null)
+            //    fcp_Tablet.color = fcp.color;
         }
 
-        UpdateUIColorDisplay();
+        //UpdateUIColorDisplay();
     }
 
     private void OnColorPickerChanged(Color newColor)
@@ -1170,16 +1170,16 @@ public class Canvas2DManager : MonoBehaviour
         if (fcp_Tablet != null && !Mathf.Approximately(fcp_Tablet.color.r, newColor.r))
             fcp_Tablet.color = newColor;
 
-        UpdateUIColorDisplay();
+        //UpdateUIColorDisplay();
     }
 
-    private void UpdateUIColorDisplay()
-    {
-        if (uiManager != null && uiManager.ColorPageButtonForDraw2D != null)
-        {
-            uiManager.ColorPageButtonForDraw2D.GetComponent<Image>().color = currentBrushColor;
-        }
-    }
+    //private void UpdateUIColorDisplay()
+    //{
+    //    if (uiManager != null && uiManager.ColorPageButtonForDraw2D != null)
+    //    {
+    //        uiManager.ColorPageButtonForDraw2D.GetComponent<Image>().color = currentBrushColor;
+    //    }
+    //}
 
     private void Complete()
     {
@@ -1223,7 +1223,7 @@ public class Canvas2DManager : MonoBehaviour
         Hide2DCanvas();
         drawFunction.in2DDraw = false;
         uiManager.FounctionUI.SetActive(true);
-        uiManager.SwitchToPanel(uiManager.DrawPanel1);
+        uiManager.SwitchToPanel(uiManager.UIHome);
 
         ClearHistory();
     }

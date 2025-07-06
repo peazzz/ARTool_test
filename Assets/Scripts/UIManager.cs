@@ -6,12 +6,12 @@ using Niantic.Lightship.AR.NavigationMesh;
 public class UIManager : MonoBehaviour
 {
     public RectTransform FounctionUI_RT, HandleArrow_RT;
-    public GameObject BackButton, FounctionUI, ClearModeButton, ClearModeObject, ClearModeHint, NewSculptButton, SculptModeHint, LoadButton;
-    public GameObject UIHome, NewSculptPanel, SculptPanel1, SculptPanel2, DrawPanel1, DrawPanel2, BrushPanel, BrushPanel2D;
-    public GameObject ScalePage, RotationPage, OtherPage, ColorPage1;
-    public Button ScalePageButton, RotationPageButton, OtherPageButton;
-    public GameObject ColorPageButtonForSculpt, GroundCheck, AE, SP, RP, OP;
-    public GameObject BasicEditPage, BasicEditPage2D, ColorPage2, ColorPage3, ColorPageButtonForDraw, ColorPageButtonForDraw2D;
+    public GameObject BackButton, FounctionUI, ClearModeButton, ClearModeObject, ClearModeHint, NewSculptButton, SculptModeHint, LoadButton, MaterialButton;
+    public GameObject UIHome, NewSculptPanel, SculptPanel1, SculptPanel2, DrawPanel1, DrawPanel2, BrushPanel, BrushPanel2D, MaterialPanel;
+    public GameObject ScalePage, RotationPage, ColorPage1;
+    public Button ScalePageButton, RotationPageButton;
+    public GameObject ColorPageButtonForSculpt, GroundCheck, AE, SP, RP;
+    public GameObject BasicEditPage, BasicEditPage2D, ColorPage2, ColorPage3, ColorPageButtonForDraw, ColorPageButtonForDraw2D_Phone, ColorPageButtonForDraw2D_Tablet, MaterialColor, MaterialPenColor;
     public SculptFunction sculptFunction;
     public DrawFunction drawFunction;
     public Canvas2DManager canvas2DManager;
@@ -23,6 +23,9 @@ public class UIManager : MonoBehaviour
     private readonly Vector3 ARROW_NORMAL_SCALE = new Vector3(0.6f, 0.6f, 0.6f);
     private readonly Vector3 ARROW_FLIPPED_SCALE = new Vector3(0.6f, -0.6f, 0.6f);
     public bool inSculptMode = false;
+    public GameObject SelectObjectHint;
+
+    public GameObject ColorPicker;
 
     void Start()
     {
@@ -37,15 +40,8 @@ public class UIManager : MonoBehaviour
             ColorPageButtonForSculpt.GetComponent<Image>().color = sculptFunction.fcp.color;
         if (ColorPage2?.activeInHierarchy == true)
             ColorPageButtonForDraw.GetComponent<Image>().color = drawFunction.fcp.color;
-        if (ColorPage3?.activeInHierarchy == true)
-            ColorPageButtonForDraw2D.GetComponent<Image>().color = drawFunction.fcp.color;
 
-            if (sculptFunction && sculptFunction.Hint)
-    {
-        bool hasModels = GameObject.FindGameObjectsWithTag("SculptObject").Length > 0;
-        bool inAnyMode = inSculpt || inDraw || inSculptMode;
-        sculptFunction.Hint.SetActive(hasModels && !inAnyMode);
-    }
+        ColorImageChange();
     }
 
     void InitializeUI()
@@ -63,13 +59,12 @@ public class UIManager : MonoBehaviour
     {
         ScalePageButton?.onClick.AddListener(() => ScalePageSelect());
         RotationPageButton?.onClick.AddListener(() => RotationPageSelect());
-        OtherPageButton?.onClick.AddListener(() => OtherPageSelect());
         ColorPageButtonForSculpt.GetComponent<Button>().onClick.AddListener(() => ColorPageSelectForSculpt());
         ColorPageButtonForDraw.GetComponent<Button>().onClick.AddListener(() => ColorPageSelectForDraw());
-        ColorPageButtonForDraw2D.GetComponent<Button>().onClick.AddListener(() => ColorPageSelectForDraw2D());
         GroundCheck.GetComponent<Button>().onClick.AddListener(() => GroundCheckFunction());
         ClearModeButton.GetComponent<Button>().onClick.AddListener(() => ClearModeSwitch());
         NewSculptButton.GetComponent<Button>().onClick.AddListener(() => NewSculpt());
+        MaterialButton.GetComponent<Button>().onClick.AddListener(() => MaterialButtonSelect());
     }
 
     public void NewSculpt()
@@ -122,6 +117,16 @@ public class UIManager : MonoBehaviour
         ClearModeButton.SetActive(false);
     }
 
+    public void MaterialButtonSelect()
+    {
+        drawFunction.TextureMode = true;
+        FounctionUI.SetActive(false);
+        SelectObjectHint.SetActive(true);
+
+        SwitchToPanel(MaterialPanel);
+        SetPanelActive(BackButton, true);
+    }
+
     public void FunctionUISwitch()
     {
         UI_on = !UI_on;
@@ -130,51 +135,55 @@ public class UIManager : MonoBehaviour
 
     public void ScalePageSelect()
     {
-        ScalePage.SetActive(true); RotationPage.SetActive(false); OtherPage.SetActive(false);
+        ScalePage.SetActive(true); RotationPage.SetActive(false);
         ScalePageButton.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
         RotationPageButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
-        OtherPageButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
     }
 
     void RotationPageSelect()
     {
-        ScalePage.SetActive(false); RotationPage.SetActive(true); OtherPage.SetActive(false);
+        ScalePage.SetActive(false); RotationPage.SetActive(true);
         ScalePageButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
         RotationPageButton.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
-        OtherPageButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
-    }
-
-    public void OtherPageSelect()
-    {
-        ScalePage.SetActive(false); RotationPage.SetActive(false); OtherPage.SetActive(true);
-        ScalePageButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
-        RotationPageButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
-        OtherPageButton.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
     }
 
     public void ColorPageSelectForSculpt()
     {
         isInColorPage = true;
-        ColorPage1.SetActive(true); OtherPage.SetActive(false);
+        ColorPage1.SetActive(true);
         sculptFunction.GenerateButtonObj.SetActive(false);
         if (inSculpt)
         {
-            AE.SetActive(false); SP.SetActive(false); RP.SetActive(false); OP.SetActive(false);
+            AE.SetActive(false); SP.SetActive(false); RP.SetActive(false);
             if (sculptFunction) StartCoroutine(DelayedColorSync());
         }
     }
 
     public void ColorPageSelectForDraw()
     {
-        isInColorPage = true;
-        ColorPage2.SetActive(true); BasicEditPage.SetActive(false);
-        drawFunction.FinishButtonObj.SetActive(false);
+        //isInColorPage = true;
+        //ColorPage2.SetActive(true); BasicEditPage.SetActive(false);
+        //drawFunction.FinishButtonObj.SetActive(false);
+
+        ColorPicker.SetActive(true);
+    }
+
+    void ColorImageChange()
+    {
+        ColorPageButtonForDraw.GetComponent<Image>().color = drawFunction.fcp.color;
+        ColorPageButtonForDraw2D_Phone.GetComponent<Image>().color = canvas2DManager.fcp.color;
+        ColorPageButtonForDraw2D_Tablet.GetComponent<Image>().color = canvas2DManager.fcp_Tablet.color;
+        MaterialPenColor.GetComponent<Image>().color = sculptFunction.fcp_pen.color;
+
+        MaterialColor.GetComponent<Image>().color = sculptFunction.fcp.color;
     }
 
     public void ColorPageSelectForDraw2D()
     {
-        isInColorPage = true;
-        ColorPage3.SetActive(true); BasicEditPage2D.SetActive(false);
+        //isInColorPage = true;
+        //ColorPage3.SetActive(true); BasicEditPage2D.SetActive(false);
+
+        ColorPicker.SetActive(true);
     }
 
     void GroundCheckFunction()
@@ -200,11 +209,10 @@ public class UIManager : MonoBehaviour
 
     public void BackToPanel2()
     {
-        AE.SetActive(true); SP.SetActive(true); RP.SetActive(true); OP.SetActive(true);
+        AE.SetActive(true); SP.SetActive(true); RP.SetActive(true);
         ColorPage1.SetActive(false);
         isInColorPage = false;
 
-        OtherPageSelect();
 
         if (sculptFunction) sculptFunction.SyncCurrentModelColorToUI();
     }
@@ -272,27 +280,31 @@ public class UIManager : MonoBehaviour
                 else
                 {
                     drawFunction.ClearAll.SetActive(false);
-                    SwitchToPanel(DrawPanel1); drawFunction.DrawPanel.SetActive(false);
+                    SetPanelActive(BackButton, false); ClearModeButton.SetActive(true);
+                    SwitchToPanel(UIHome); drawFunction.DrawPanel.SetActive(false);
                     drawFunction.TwoPointActionButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
                     drawFunction.waitingForSecondPoint = false;
                     if (drawFunction.tempLineRenderer) { Destroy(drawFunction.tempLineRenderer.gameObject); drawFunction.tempLineRenderer = null; }
+                    inDraw = false;
                 }
             }
-            else if (canvas2DManager.Canvas2D.activeSelf)
-            {
-                drawFunction.Warning.SetActive(true); drawFunction.WarningText_2DPaint.SetActive(true);
-                drawFunction.LeaveButton.SetActive(true); drawFunction.CancelButton.SetActive(true);
-            }
-            else if (canvas2DManager.Canvas2D_Tablet.activeSelf)
-            {
-                drawFunction.Warning.SetActive(true); drawFunction.WarningText_2DPaint.SetActive(true);
-                drawFunction.LeaveButton.SetActive(true); drawFunction.CancelButton.SetActive(true);
-            }
         }
-        else
+        else if(drawFunction.TextureMode && sculptFunction.currentSelectedObject != null)
         {
             SwitchToPanel(UIHome);
+            SetPanelActive(BackButton, false);
+            FounctionUI.SetActive(true);
+            SelectObjectHint.SetActive(false);
+            sculptFunction.SetObjectGlow(sculptFunction.currentSelectedObject, false);
+            sculptFunction.currentSelectedObject = null;
+            drawFunction.TextureMode = false;
         }
+    }
+
+    public void Canvas2DPainting_Exit()
+    {
+        drawFunction.Warning.SetActive(true); drawFunction.WarningText_2DPaint.SetActive(true);
+        drawFunction.LeaveButton.SetActive(true); drawFunction.CancelButton.SetActive(true);
     }
 
     public void SelectObjectForEditing(GameObject selectedObject)
@@ -316,6 +328,7 @@ public class UIManager : MonoBehaviour
         SetPanelActive(DrawPanel2, targetPanel == DrawPanel2);
         SetPanelActive(BrushPanel, targetPanel == BrushPanel);
         SetPanelActive(BrushPanel2D, targetPanel == BrushPanel2D);
+        SetPanelActive(MaterialPanel, targetPanel == MaterialPanel);
     }
 
     private void SetPanelActive(GameObject panel, bool active)

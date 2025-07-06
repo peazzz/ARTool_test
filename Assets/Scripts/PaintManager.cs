@@ -298,10 +298,19 @@ public class PaintManager : MonoBehaviour
                     float strength = CalculateSquareBrushStrength(x, y, brushRadius);
 
                     Color currentColor = paintTexture.GetPixel(targetX, targetY);
-                    Color blendedColor = Color.Lerp(currentColor, paintColor, strength * paintColor.a);
-                    blendedColor.a = Mathf.Max(currentColor.a, strength * paintColor.a);
 
-                    paintTexture.SetPixel(targetX, targetY, blendedColor);
+                    if (paintColor == Color.clear || paintColor.a == 0f)
+                    {
+                        Color blendedColor = currentColor;
+                        blendedColor.a = Mathf.Lerp(currentColor.a, 0f, strength);
+                        paintTexture.SetPixel(targetX, targetY, blendedColor);
+                    }
+                    else
+                    {
+                        Color blendedColor = Color.Lerp(currentColor, paintColor, strength * paintColor.a);
+                        blendedColor.a = Mathf.Max(currentColor.a, strength * paintColor.a);
+                        paintTexture.SetPixel(targetX, targetY, blendedColor);
+                    }
                 }
             }
         }

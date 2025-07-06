@@ -39,10 +39,10 @@ public class DrawFunction : MonoBehaviour
     public InputField DistanceInputField2, GapInputField2;
 
     public GameObject ImageSelectorButton;
-    public InputField CountInputField;
+    
     public Material ParticleMaterial;
 
-    public int particleCount = 10;
+    public int particleCount = 1;
     private Texture2D currentParticleTexture;
 
     public Material LineMaterial;
@@ -67,6 +67,17 @@ public class DrawFunction : MonoBehaviour
     private float inputSensitivity = 2f;
 
     public GameObject ClearAll;
+    public SculptFunction sculptFunction;
+    public bool usePen_Material;
+    public GameObject PenBackground;
+    public bool useEraser_Material;
+    public GameObject EraserBackground;
+    public Slider WidthSlider_M;
+    public InputField WidthInputField_M;
+    public float paint3DBrushSize = 0.03f;
+
+    public Slider CountSlider;
+    public InputField CountInputField;
 
     void Start()
     {
@@ -76,16 +87,20 @@ public class DrawFunction : MonoBehaviour
         InitializeParticleSettings();
         LineBrushSelection();
         SpaceModeSelection();
-        if (fcp && LineMaterial)
-        {
-            fcp.color = new Color(1, 1, 1, 1);
-            LineMaterial.color = fcp.color;
-            if (ParticleMaterial)
-            {
-                ParticleMaterial.color = fcp.color;
-            }
-            fcp.onColorChange.AddListener(OnChangeColor);
-        }
+        //if (fcp && LineMaterial)
+        //{
+        //    fcp.color = new Color(1, 1, 1, 1);
+        //    LineMaterial.color = fcp.color;
+        //    if (ParticleMaterial)
+        //    {
+        //        ParticleMaterial.color = fcp.color;
+        //    }
+        //    fcp.onColorChange.AddListener(OnChangeColor);
+        //}
+
+        LineMaterial.color = fcp.color;
+        ParticleMaterial.color = fcp.color;
+        fcp.onColorChange.AddListener(OnChangeColor);
     }
 
     void InitializeParticleSettings()
@@ -100,13 +115,13 @@ public class DrawFunction : MonoBehaviour
     void SetupAllButtonEvents()
     {
         _3DDraw?.onClick.AddListener(() => {
-            LineBrush = true; ParticleBrush = false; in3DDraw = true; in2DDraw = false; ClearAll.SetActive(true);
+            LineBrush = true; ParticleBrush = false; in3DDraw = true; in2DDraw = false; ClearAll.SetActive(true); uiManager.DrawButton();
             DrawPanel.SetActive(true); uiManager.SwitchToPanel(uiManager.BrushPanel);
-            uiManager.SetUIVisibility(false); uiManager.UI_on = false;
+            //uiManager.SetUIVisibility(false); uiManager.UI_on = false;
             LineBrushSelection(); SpaceModeSelection();
         });
         _2DDraw?.onClick.AddListener(() => {
-            LineBrush = true; ParticleBrush = false; in2DDraw = true; in3DDraw = false;
+            LineBrush = true; ParticleBrush = false; in2DDraw = true; in3DDraw = false; uiManager.ClearModeButton.SetActive(false);
             if (canvas2DManager) canvas2DManager.Show2DCanvas_Auto();
             uiManager.FounctionUI.SetActive(false);
         });
@@ -137,6 +152,21 @@ public class DrawFunction : MonoBehaviour
         if (DistanceSlider2) { DistanceSlider2.value = cameraDistance; DistanceSlider2.minValue = 0.1f; DistanceSlider2.maxValue = 2.0f; }
         if (GapSlider2) { GapSlider2.value = gapThreshold; GapSlider2.minValue = 0.001f; GapSlider2.maxValue = 0.1f; }
 
+        if (WidthSlider_M)
+        {
+            WidthSlider_M.value = paint3DBrushSize;
+            WidthSlider_M.minValue = 0.001f;
+            WidthSlider_M.maxValue = 0.1f;
+        }
+
+        if (CountSlider)
+        {
+            CountSlider.value = particleCount;
+            CountSlider.minValue = 1f;
+            CountSlider.maxValue = 10f;
+            CountSlider.wholeNumbers = true;
+        }
+
         UpdateInputFields();
     }
 
@@ -158,14 +188,19 @@ public class DrawFunction : MonoBehaviour
 
         DistanceInputField2?.onEndEdit.AddListener(OnDistanceInputChanged);
         GapInputField2?.onEndEdit.AddListener(OnGapInputChanged);
+
+        WidthSlider_M?.onValueChanged.AddListener(OnWidthSliderChanged_M);
+        WidthInputField_M?.onEndEdit.AddListener(OnWidthInputChanged_M);
+
+        CountSlider?.onValueChanged.AddListener(OnCountSliderChanged);
     }
 
     void Update()
     {
         if (use)
         {
-            if (TextureMode && in3DDraw && LineBrush) Handle3DPainting();
-            else if (SpaceMode && startLine) { UpdateAnchor(); DrawLinewContinue(); }
+            if (TextureMode && in3DDraw && LineBrush) SurfaceDrawing();
+            if (SpaceMode && startLine) { UpdateAnchor(); DrawLinewContinue(); }
         }
         if (ParticleBrush && particleActive)
         {
@@ -181,6 +216,14 @@ public class DrawFunction : MonoBehaviour
                 Ray ray = arCamera.ScreenPointToRay(GetInputPosition());
                 if (Physics.Raycast(ray, out RaycastHit hit, 100f))
                     tempLineRenderer.SetPosition(1, hit.point);
+            }
+        }
+
+        if (TextureMode && sculptFunction.currentSelectedObject != null)
+        {
+            if (GetInput() && (usePen_Material || useEraser_Material) && !uiManager.ColorPicker.activeInHierarchy)
+            {
+                Handle3DPainting();
             }
         }
     }
@@ -229,6 +272,22 @@ public class DrawFunction : MonoBehaviour
         return RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRect, inputPosition, uiCamera, out Vector2 localPoint);
     }
 
+    public void usePen()
+    {
+        usePen_Material = true;
+        useEraser_Material = false;
+        PenBackground.GetComponent<Image>().color = new Color(1, 1, 1, 1);
+        EraserBackground.GetComponent<Image>().color = new Color(1, 1, 1, 0);
+    }
+
+    public void useEraser()
+    {
+        usePen_Material = false;
+        useEraser_Material = true;
+        PenBackground.GetComponent<Image>().color = new Color(1, 1, 1, 0);
+        EraserBackground.GetComponent<Image>().color = new Color(1, 1, 1, 1);
+    }
+
     void Handle3DPainting()
     {
         Ray ray = arCamera.ScreenPointToRay(GetInputPosition());
@@ -260,8 +319,16 @@ public class DrawFunction : MonoBehaviour
                             paintManager = hit.collider.gameObject.AddComponent<PaintManager>();
                         }
 
-                        paintManager.paintColor = LineMaterial.color;
-                        paintManager.brushSize = lineWidth;
+                        if (useEraser_Material)
+                        {
+                            paintManager.paintColor = Color.clear;
+                        }
+                        else if (usePen_Material)
+                        {
+                            paintManager.paintColor = LineMaterial.color;
+                        }
+
+                        paintManager.brushSize = paint3DBrushSize;
 
                         Vector3 adjustedNormal = hit.normal;
                         if (Vector3.Dot(adjustedNormal, ray.direction) > 0)
@@ -277,23 +344,40 @@ public class DrawFunction : MonoBehaviour
                     }
                 }
             }
-            else
-            {
-                float distance = Vector3.Distance(hit.point, lastPaintPosition);
-                if (distance >= gapThreshold || lastHitObject != hit.collider.gameObject)
-                {
-                    if (lineRenderer == null || lastHitObject != hit.collider.gameObject)
-                    {
-                        CreateSurfaceLineRenderer(hit.point);
-                    }
-                    else
-                    {
-                        AddPointToSurfaceLine(hit.point);
-                    }
+        }
+    }
 
-                    lastHitObject = hit.collider.gameObject;
-                    lastPaintPosition = hit.point;
+    void SurfaceDrawing()
+    {
+        Ray ray = arCamera.ScreenPointToRay(GetInputPosition());
+        RaycastHit hit;
+
+        if (Physics.Raycast(ray, out hit, 100f))
+        {
+            if (StraightLine)
+            {
+                if (textureClickEnabled && !hasProcessedClick)
+                {
+                    HandleTexture3DTwoPointDrawing(hit);
+                    hasProcessedClick = true;
                 }
+                return;
+            }
+
+            float distance = Vector3.Distance(hit.point, lastPaintPosition);
+            if (distance >= gapThreshold || lastHitObject != hit.collider.gameObject)
+            {
+                if (lineRenderer == null || lastHitObject != hit.collider.gameObject)
+                {
+                    CreateSurfaceLineRenderer(hit.point);
+                }
+                else
+                {
+                    AddPointToSurfaceLine(hit.point);
+                }
+
+                lastHitObject = hit.collider.gameObject;
+                lastPaintPosition = hit.point;
             }
         }
     }
@@ -508,16 +592,23 @@ public class DrawFunction : MonoBehaviour
     private void SpaceModeSelection()
     {
         SpaceMode = true; TextureMode = false; isPaintingOn3D = false;
-        Distance.SetActive(true);
+        //Distance.SetActive(true);
         SpaceModeButton.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
         TextureModeButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
     }
 
     private void TextureModeSelection()
     {
-        SpaceMode = false; TextureMode = true; Distance.SetActive(false);
-        SpaceModeButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
-        TextureModeButton.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
+        TextureMode = !TextureMode;
+
+        if (TextureMode)
+        {
+            TextureModeButton.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
+        }
+        else
+        {
+            TextureModeButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
+        }
     }
 
     public void MakeLineRenderer()
@@ -742,7 +833,15 @@ public class DrawFunction : MonoBehaviour
     {
         if (int.TryParse(value, out int newCount))
         {
-            particleCount = Mathf.Clamp(newCount, 1, 100);
+            particleCount = Mathf.Clamp(newCount, 1, 10);
+
+            if (CountSlider)
+            {
+                CountSlider.onValueChanged.RemoveListener(OnCountSliderChanged);
+                CountSlider.value = particleCount;
+                CountSlider.onValueChanged.AddListener(OnCountSliderChanged);
+            }
+
             CountInputField.text = particleCount.ToString();
         }
         else
@@ -994,11 +1093,20 @@ public class DrawFunction : MonoBehaviour
 
     public void ResetParticleSettings()
     {
-        particleCount = 10;
+        particleCount = 1;
+
         if (CountInputField)
         {
             CountInputField.text = particleCount.ToString();
         }
+
+        if (CountSlider)
+        {
+            CountSlider.onValueChanged.RemoveListener(OnCountSliderChanged);
+            CountSlider.value = particleCount;
+            CountSlider.onValueChanged.AddListener(OnCountSliderChanged);
+        }
+
         ClearParticleTexture();
     }
 
@@ -1120,7 +1228,7 @@ public class DrawFunction : MonoBehaviour
         gapThreshold = 0.01f;
         SetGapSliderValues(gapThreshold);
 
-        Color defaultColor = new Color(1f, 1f, 1f, 1f);
+        Color defaultColor = new Color(0f, 0f, 0f, 1f);
         LineMaterial.color = defaultColor;
         if (ParticleMaterial) ParticleMaterial.color = defaultColor;
         if (fcp) fcp.color = defaultColor;
@@ -1149,5 +1257,55 @@ public class DrawFunction : MonoBehaviour
         ClearAll.SetActive(false);
 
         ResetParticleSettings();
+    }
+
+    public void OnWidthSliderChanged_M(float value)
+    {
+        paint3DBrushSize = value;
+        UpdateInputFields_M();
+        ApplyWidthToCurrentPaint();
+    }
+
+    public void OnWidthInputChanged_M(string value)
+    {
+        string cleanValue = value.Replace("%", "").Trim();
+        if (float.TryParse(cleanValue, out float percentageValue))
+        {
+            percentageValue = Mathf.Clamp(percentageValue, 10f, 1000f);
+            float actualValue = Mathf.Lerp(0.001f, 0.1f, (percentageValue - 10f) / 990f);
+            paint3DBrushSize = actualValue;
+            if (WidthSlider_M) WidthSlider_M.value = paint3DBrushSize;
+            ApplyWidthToCurrentPaint();
+        }
+        UpdateInputFields_M();
+    }
+
+    void UpdateInputFields_M()
+    {
+        if (WidthInputField_M)
+        {
+            float normalizedValue = Mathf.InverseLerp(0.001f, 0.1f, paint3DBrushSize);
+            float displayWidth = Mathf.Lerp(10f, 1000f, normalizedValue);
+            WidthInputField_M.text = displayWidth.ToString("F0") + "%";
+        }
+    }
+
+    void ApplyWidthToCurrentPaint()
+    {
+        if (currentPaintManager != null)
+        {
+            currentPaintManager.brushSize = paint3DBrushSize;
+        }
+    }
+
+    public void OnCountSliderChanged(float value)
+    {
+        particleCount = Mathf.RoundToInt(value);
+        particleCount = Mathf.Clamp(particleCount, 1, 10);
+
+        if (CountInputField)
+        {
+            CountInputField.text = particleCount.ToString();
+        }
     }
 }

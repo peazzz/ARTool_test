@@ -34,6 +34,7 @@ public class SculptFunction : MonoBehaviour
     public GameObject GenerateButtonObj;
     public Button GenerateButton, ResetButton;
     public FlexibleColorPicker fcp;
+    public FlexibleColorPicker fcp_pen;
     public GameObject ImageSelector;
     public Material ColorMaterial;
     public Material TextureMaterial;
@@ -62,7 +63,7 @@ public class SculptFunction : MonoBehaviour
     private int gridSize = 10;
     private bool isUpdatingUI = false, isRotating = false;
     private float lastUpdateTime = 0f, lastRaycastTime = 0f;
-    private const float updateInterval = 0.1f;
+    private const float updateInterval = 0.03f;
     private Vector3 lastPreviewPosition;
     private Quaternion lastPreviewRotation;
     private Vector2 lastTouchPosition;
@@ -108,7 +109,6 @@ private float sculptStartTime = 0f;
     public GameObject FillButton;
     public SculptMode currentSculptMode = SculptMode.Carve;
     public Text SculptHint;
-    public GameObject Hint;
 
     [Header("Movement-based Sculpting")]
     [SerializeField] private float movementThreshold = 0.05f;  // 移動閾值距離
@@ -119,6 +119,8 @@ private float sculptStartTime = 0f;
     private Vector3 lastSculptPosition = Vector3.zero;
     private bool hasInitialSculptPosition = false;
     private float lastMovementSculptTime = 0f;
+
+    public DrawFunction drawFunction; 
 
     void Start()
     {
@@ -145,7 +147,7 @@ private float sculptStartTime = 0f;
 
     void Update()
     {
-        if (!isEditingExistingObject && Input.GetMouseButtonDown(0) && !IsPointerOverUIElement() && uiManager.UIHome && uiManager.UIHome.activeInHierarchy)
+        if (!isEditingExistingObject && Input.GetMouseButtonDown(0) && !IsPointerOverUIElement() && (uiManager.UIHome && uiManager.UIHome.activeInHierarchy || drawFunction.TextureMode))
             CheckForObjectSelection();
         if ((previewModel || (isEditingExistingObject && currentSelectedObject)) && Time.time - lastUpdateTime > updateInterval)
         {
@@ -340,78 +342,98 @@ if (isInSculptMode && isActiveSculpting) return;
 
     public void SelectObject(GameObject obj)
     {
-        SaveButton.SetActive(true);
-    SaveButton2.SetActive(true);
-    uiManager.inSculpt = true;
-
-    DeselectCurrentObject();
-    currentSelectedObject = obj;
-    isEditingExistingObject = true;
-    SetObjectGlow(currentSelectedObject, true);
-    originalLayer = currentSelectedObject.layer;
-    SetLayerRecursively(currentSelectedObject, LayerMask.NameToLayer("PreviewObject"));
-
-    PaintManager paintManager = currentSelectedObject.GetComponent<PaintManager>();
-    if (!paintManager) 
-    {
-        paintManager = currentSelectedObject.AddComponent<PaintManager>();
-        paintManager.EnsurePaintTextureExists();
-    }
-
-    DualMaterialManager dualManager = currentSelectedObject.GetComponent<DualMaterialManager>();
-    OBJMaterialManager objManager = currentSelectedObject.GetComponent<OBJMaterialManager>();
-
-    if (dualManager)
-    {
-        fcp.color = dualManager.GetCurrentColor();
-    }
-    else
-    {
-        MeshRenderer renderer = currentSelectedObject.GetComponent<MeshRenderer>();
-        if (renderer && renderer.material)
+        if (drawFunction.TextureMode)
         {
-            fcp.color = renderer.material.color;
+            uiManager.FounctionUI.SetActive(true);
+            uiManager.SelectObjectHint.SetActive(false);
+
+            if (currentSelectedObject == null)
+            {
+                currentSelectedObject = obj;
+                SetObjectGlow(currentSelectedObject, true);
+            }
+            else if (currentSelectedObject != null)
+            {
+                SetObjectGlow(currentSelectedObject, false);
+                currentSelectedObject = obj;
+                SetObjectGlow(currentSelectedObject, true);
+            }
+
+            DualMaterialManager dualManager = currentSelectedObject.GetComponent<DualMaterialManager>();
+            OBJMaterialManager objManager = currentSelectedObject.GetComponent<OBJMaterialManager>();
+
+            if (dualManager)
+            {
+                fcp.color = dualManager.GetCurrentColor();
+            }
+            else
+            {
+                MeshRenderer renderer = currentSelectedObject.GetComponent<MeshRenderer>();
+                if (renderer && renderer.material)
+                {
+                    fcp.color = renderer.material.color;
+                }
+            }
+
+            if (dualManager)
+            {
+                dualManager.SetColor(fcp.color);
+            }
+            else if (objManager)
+            {
+                objManager.SetColor(fcp.color);
+            }
+            else
+            {
+                ApplyColorToModel(currentSelectedObject, fcp.color);
+            }
         }
-    }
+        else
+        {
+            SaveButton.SetActive(true);
+            SaveButton2.SetActive(true);
+            uiManager.inSculpt = true;
 
-    CubeCarvingSystem carvingSystem = currentSelectedObject.GetComponent<CubeCarvingSystem>();
-    if (carvingSystem)
-    {
-        CubeCarvingSystem.ModelState modelState = carvingSystem.GetCurrentModelState();
-        LoadModelStateToUI(modelState);
-        SaveOriginalState(modelState);
-        if (!allCarvingSystems.Contains(carvingSystem)) allCarvingSystems.Add(carvingSystem);
-        selectedShape = modelState.shapeType;
-        gridSize = modelState.gridSize;
-        GridInputField.interactable = false;
-    }
-    else
-    {
-        LoadParametersFromObject(currentSelectedObject);
-        GridInputField.interactable = true;
-    }
+            DeselectCurrentObject();
+            currentSelectedObject = obj;
+            isEditingExistingObject = true;
+            SetObjectGlow(currentSelectedObject, true);
+            originalLayer = currentSelectedObject.layer;
+            SetLayerRecursively(currentSelectedObject, LayerMask.NameToLayer("PreviewObject"));
 
-    uiManager.SculptPanel1?.SetActive(false);
-    uiManager.SculptPanel2?.SetActive(true);
-    uiManager.UIHome?.SetActive(false);
-    uiManager.BackButton?.SetActive(true);
-    uiManager.BackToPanel2();
+            PaintManager paintManager = currentSelectedObject.GetComponent<PaintManager>();
+            if (!paintManager)
+            {
+                paintManager = currentSelectedObject.AddComponent<PaintManager>();
+                paintManager.EnsurePaintTextureExists();
+            }
+           
+            CubeCarvingSystem carvingSystem = currentSelectedObject.GetComponent<CubeCarvingSystem>();
+            if (carvingSystem)
+            {
+                CubeCarvingSystem.ModelState modelState = carvingSystem.GetCurrentModelState();
+                LoadModelStateToUI(modelState);
+                SaveOriginalState(modelState);
+                if (!allCarvingSystems.Contains(carvingSystem)) allCarvingSystems.Add(carvingSystem);
+                selectedShape = modelState.shapeType;
+                gridSize = modelState.gridSize;
+                GridInputField.interactable = false;
+            }
+            else
+            {
+                LoadParametersFromObject(currentSelectedObject);
+                GridInputField.interactable = true;
+            }
 
-    UpdateAllUIValues();
-    SetDefaultPositionLockState(true);
+            uiManager.SculptPanel1?.SetActive(false);
+            uiManager.SculptPanel2?.SetActive(true);
+            uiManager.UIHome?.SetActive(false);
+            uiManager.BackButton?.SetActive(true);
+            uiManager.BackToPanel2();
 
-    if (dualManager)
-    {
-        dualManager.SetColor(fcp.color);
-    }
-    else if (objManager)
-    {
-        objManager.SetColor(fcp.color);
-    }
-    else
-    {
-        ApplyColorToModel(currentSelectedObject, fcp.color);
-    }
+            UpdateAllUIValues();
+            SetDefaultPositionLockState(true);       
+        }
     }
 
     private void LoadModelStateToUI(CubeCarvingSystem.ModelState modelState)
@@ -478,7 +500,7 @@ if (isInSculptMode && isActiveSculpting) return;
         }
     }
 
-    void SetObjectGlow(GameObject obj, bool glow)
+    public void SetObjectGlow(GameObject obj, bool glow)
     {
         MeshRenderer renderer = obj.GetComponent<MeshRenderer>();
         if (renderer && glow)
@@ -727,7 +749,7 @@ private float GetSculptScaleValue()
     {
         ColorMaterial.color = co;
 
-        if (isEditingExistingObject && currentSelectedObject)
+        if (drawFunction.TextureMode && currentSelectedObject)
         {
             DualMaterialManager dualManager = currentSelectedObject.GetComponent<DualMaterialManager>();
             OBJMaterialManager objManager = currentSelectedObject.GetComponent<OBJMaterialManager>();
@@ -1795,7 +1817,7 @@ private float GetSculptScaleValue()
 
     public void OnTextureLoaded(Texture2D loadedTexture)
     {
-        GameObject targetModel = isEditingExistingObject ? currentSelectedObject : previewModel;
+        GameObject targetModel = currentSelectedObject;
         if (targetModel)
         {
             DualMaterialManager dualManager = targetModel.GetComponent<DualMaterialManager>();
