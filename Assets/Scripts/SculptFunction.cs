@@ -122,6 +122,16 @@ private float sculptStartTime = 0f;
 
     public DrawFunction drawFunction; 
 
+    [Header("Touch Scaling")]
+[SerializeField] private float minScale = 0.1f;
+[SerializeField] private float maxScale = 3f;
+[SerializeField] private float scaleSpeed = 2f;
+[SerializeField] private bool enableTouchScaling = true;
+
+// Touch scaling variables
+private float lastTouchDistance = 0f;
+private bool isTouchScaling = false;
+
     void Start()
     {
         targetCamera = targetCamera ?? Camera.main;
@@ -899,6 +909,9 @@ private float GetSculptScaleValue()
         currentRotationY = 0f;
         modelRotation = Vector3.zero;
         isEditingExistingObject = false;
+
+        mainScale = 0.5f;
+    individualScale = Vector3.one;
         uiManager.SculptPanel1?.SetActive(false);
         uiManager.SculptPanel2?.SetActive(true);
         uiManager.FunctionUISwitch();
@@ -907,6 +920,7 @@ private float GetSculptScaleValue()
         uiManager.GroundCheck.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
         CreatePreviewModel();
         UpdateRotationYUI();
+        UpdateAllUIValues();
         SetDefaultPositionLockState(false);
     }
 
@@ -1210,11 +1224,18 @@ private float GetSculptScaleValue()
 
     void HandleRotationInput()
     {
-        if (IsPointerOverUIElement()) { isRotating = false; return; }
+        if (IsPointerOverUIElement()) 
+    { 
+        isRotating = false; 
+        isTouchScaling = false;
+        return; 
+    }
+
 #if UNITY_EDITOR
-        HandleMouseRotation();
+    HandleMouseRotation();
+    HandleMouseScaling(); // 添加滑鼠滾輪縮放支援
 #else
-        HandleTouchRotation();
+    HandleTouchInput(); // 統一處理觸控輸入
 #endif
     }
 
@@ -1237,35 +1258,109 @@ private float GetSculptScaleValue()
         else if (Input.GetMouseButtonUp(0)) isRotating = false;
     }
 
-    void HandleTouchRotation()
+    void HandleMouseScaling()
+{
+    if (!enableTouchScaling) return;
+
+    float scroll = Input.GetAxis("Mouse ScrollWheel");
+    if (Mathf.Abs(scroll) > 0.01f)
     {
-        if (Input.touchCount == 1)
-        {
-            Touch touch = Input.GetTouch(0);
-            switch (touch.phase)
-            {
-                case TouchPhase.Began:
-                    isRotating = true;
-                    lastTouchPosition = touch.position;
-                    break;
-                case TouchPhase.Moved:
-                    if (isRotating)
-                    {
-                        Vector2 deltaPosition = touch.position - lastTouchPosition;
-                        currentRotationY -= deltaPosition.x * rotationSpeed;
-                        currentRotationY = NormalizeAngle(currentRotationY);
-                        modelRotation.y = currentRotationY;
-                        UpdateRotationYUI();
-                        lastTouchPosition = touch.position;
-                    }
-                    break;
-                case TouchPhase.Ended:
-                case TouchPhase.Canceled:
-                    isRotating = false;
-                    break;
-            }
-        }
+        float scaleChange = scroll * scaleSpeed * 0.1f;
+        mainScale = Mathf.Clamp(mainScale + scaleChange, minScale, maxScale);
+        OnMainScaleChanged(mainScale);
+        UpdateAllUIValues();
     }
+}
+
+// 5. 新增統一觸控輸入處理方法
+void HandleTouchInput()
+{
+    if (!enableTouchScaling) return;
+
+    if (Input.touchCount == 1)
+    {
+        HandleSingleTouchRotation();
+    }
+    else if (Input.touchCount == 2)
+    {
+        HandleTwoFingerScaling();
+    }
+    else
+    {
+        isRotating = false;
+        isTouchScaling = false;
+    }
+}
+
+// 6. 新增單指旋轉方法
+void HandleSingleTouchRotation()
+{
+    Touch touch = Input.GetTouch(0);
+    
+    switch (touch.phase)
+    {
+        case TouchPhase.Began:
+            if (!isTouchScaling) // 確保不在雙指縮放狀態
+            {
+                isRotating = true;
+                lastTouchPosition = touch.position;
+            }
+            break;
+            
+        case TouchPhase.Moved:
+            if (isRotating && !isTouchScaling)
+            {
+                Vector2 deltaPosition = touch.position - lastTouchPosition;
+                currentRotationY -= deltaPosition.x * rotationSpeed;
+                currentRotationY = NormalizeAngle(currentRotationY);
+                modelRotation.y = currentRotationY;
+                UpdateRotationYUI();
+                lastTouchPosition = touch.position;
+            }
+            break;
+            
+        case TouchPhase.Ended:
+        case TouchPhase.Canceled:
+            isRotating = false;
+            break;
+    }
+}
+
+// 7. 新增雙指縮放方法
+void HandleTwoFingerScaling()
+{
+    Touch touch1 = Input.GetTouch(0);
+    Touch touch2 = Input.GetTouch(1);
+    
+    float currentDistance = Vector2.Distance(touch1.position, touch2.position);
+    
+    if (touch1.phase == TouchPhase.Began || touch2.phase == TouchPhase.Began)
+    {
+        lastTouchDistance = currentDistance;
+        isTouchScaling = true;
+        isRotating = false; // 停止旋轉
+    }
+    else if ((touch1.phase == TouchPhase.Moved || touch2.phase == TouchPhase.Moved) && isTouchScaling)
+    {
+        if (lastTouchDistance > 0)
+        {
+            float deltaDistance = currentDistance - lastTouchDistance;
+            float scaleChange = deltaDistance * scaleSpeed * 0.001f; // 調整縮放靈敏度
+            
+            mainScale = Mathf.Clamp(mainScale + scaleChange, minScale, maxScale);
+            OnMainScaleChanged(mainScale);
+            UpdateAllUIValues();
+        }
+        lastTouchDistance = currentDistance;
+    }
+    else if (touch1.phase == TouchPhase.Ended || touch2.phase == TouchPhase.Ended || 
+             touch1.phase == TouchPhase.Canceled || touch2.phase == TouchPhase.Canceled)
+    {
+        isTouchScaling = false;
+        lastTouchDistance = 0f;
+    }
+}
+
 
     bool IsPointerOverUIElement()
     {
@@ -1644,7 +1739,7 @@ private float GetSculptScaleValue()
 
     void ResetAllParameters()
     {
-        mainScale = 1f;
+        mainScale = 0.5f;
         individualScale = Vector3.one;
         gridSize = 10;
         currentRotationY = 0f;

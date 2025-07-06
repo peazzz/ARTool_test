@@ -26,6 +26,7 @@ public class UIManager : MonoBehaviour
     public GameObject SelectObjectHint;
 
     public GameObject ColorPicker;
+    public GameObject ColorPicker2;
 
     void Start()
     {
@@ -286,6 +287,7 @@ public class UIManager : MonoBehaviour
                     drawFunction.waitingForSecondPoint = false;
                     if (drawFunction.tempLineRenderer) { Destroy(drawFunction.tempLineRenderer.gameObject); drawFunction.tempLineRenderer = null; }
                     inDraw = false;
+                    drawFunction.in3DDraw=false;
                 }
             }
         }

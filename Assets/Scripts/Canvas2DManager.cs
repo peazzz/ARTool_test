@@ -843,6 +843,11 @@ public class Canvas2DManager : MonoBehaviour
 
     public void StartDrawing(Vector2 screenPosition)
     {
+        if(uiManager.ColorPicker.activeInHierarchy)
+        {
+            return;
+        }
+
         RawImage currentCanvas = GetCurrentCanvasImage();
         if (!IsPositionInCanvas(screenPosition, currentCanvas))
         {
@@ -873,7 +878,7 @@ public class Canvas2DManager : MonoBehaviour
 
     public void UpdateDrawing(Vector2 screenPosition)
     {
-        if (!isDrawing) return;
+        if (!isDrawing || uiManager.ColorPicker.activeInHierarchy) return;
 
         if (useEyedropper || usePaintBucket) return;
 
@@ -1147,13 +1152,13 @@ public class Canvas2DManager : MonoBehaviour
     {
         if (fcp != null)
         {
-            //fcp.onColorChange.AddListener(OnColorPickerChanged);
+            fcp.onColorChange.AddListener(OnColorPickerChanged);
             SetBrushColor(fcp.color);
         }
 
         if (fcp_Tablet != null)
         {
-            //fcp_Tablet.onColorChange.AddListener(OnColorPickerChanged);
+            fcp_Tablet.onColorChange.AddListener(OnColorPickerChanged);
             //if (fcp != null)
             //    fcp_Tablet.color = fcp.color;
         }

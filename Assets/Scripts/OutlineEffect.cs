@@ -11,15 +11,75 @@ public class OutlineEffect : MonoBehaviour
 
     private LineRenderer[] outlineRenderers;
     private MeshFilter meshFilter;
+    private Material outlineMaterial;
 
     void Start()
     {
+        CreateOutlineMaterial();
         CreateOutline();
+    }
+
+    void CreateOutlineMaterial()
+    {
+        // 嘗試多種Shader，按優先級排序
+        string[] shaderNames = new string[]
+        {
+            "Sprites/Default",           // Unity內建，iOS兼容性好
+            "UI/Default",                // UI Shader，通常可靠
+            "Mobile/Unlit (Supports Lightmap)", // 移動平台優化
+            "Mobile/VertexLit",          // 移動平台基礎Shader
+            "Unlit/Color",               // 原始Shader
+            "Legacy Shaders/Unlit/Color" // 備用選項
+        };
+
+        outlineMaterial = null;
+        
+        foreach (string shaderName in shaderNames)
+        {
+            Shader shader = Shader.Find(shaderName);
+            if (shader != null)
+            {
+                outlineMaterial = new Material(shader);
+                outlineMaterial.color = outlineColor;
+                
+                // 對於某些Shader，需要設置特殊屬性
+                if (shaderName.Contains("Sprites") || shaderName.Contains("UI"))
+                {
+                    if (outlineMaterial.HasProperty("_MainTex"))
+                    {
+                        // 創建一個1x1的白色紋理
+                        Texture2D whiteTexture = new Texture2D(1, 1);
+                        whiteTexture.SetPixel(0, 0, Color.white);
+                        whiteTexture.Apply();
+                        outlineMaterial.mainTexture = whiteTexture;
+                    }
+                }
+                
+                Debug.Log($"OutlineEffect: 使用Shader: {shaderName}");
+                break;
+            }
+        }
+
+        // 如果所有Shader都找不到，創建一個基本材質
+        if (outlineMaterial == null)
+        {
+            Debug.LogWarning("OutlineEffect: 無法找到合適的Shader，使用默認材質");
+            outlineMaterial = new Material(Shader.Find("Standard"));
+            outlineMaterial.color = outlineColor;
+            // 設置為無光照模式
+            if (outlineMaterial.HasProperty("_Mode"))
+            {
+                outlineMaterial.SetFloat("_Mode", 1); // Cutout mode
+            }
+        }
+
+        // 設置渲染隊列以確保正確顯示
+        outlineMaterial.renderQueue = 3000; // Transparent queue
     }
 
     void CreateOutline()
     {
-        if (!useOutline) return;
+        if (!useOutline || outlineMaterial == null) return;
 
         meshFilter = GetComponent<MeshFilter>();
         if (!meshFilter || !meshFilter.mesh) return;
@@ -60,29 +120,36 @@ public class OutlineEffect : MonoBehaviour
             lineObj.transform.localScale = Vector3.one;
 
             LineRenderer lr = lineObj.AddComponent<LineRenderer>();
-            lr.material = new Material(Shader.Find("Unlit/Color"));
-            lr.material.color = outlineColor;
+            
+            // 使用我們創建的材質
+            lr.material = outlineMaterial;
+            
+            // iOS兼容性設置
             lr.startWidth = outlineWidth;
             lr.endWidth = outlineWidth;
             lr.positionCount = 2;
             lr.useWorldSpace = false;
             lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             lr.receiveShadows = false;
-
+            lr.sortingOrder = 100; // 確保在其他物件前面顯示
+            
             // 設置線段的兩個端點
             Vector3 start = corners[edges[i, 0]];
             Vector3 end = corners[edges[i, 1]];
 
-            // 稍微擴大邊框
+            // 稍微擴大邊框，避免Z-fighting
             Vector3 center = bounds.center;
-            start = center + (start - center) * (1f + outlineWidth);
-            end = center + (end - center) * (1f + outlineWidth);
+            float expansionFactor = 1f + outlineWidth * 2f;
+            start = center + (start - center) * expansionFactor;
+            end = center + (end - center) * expansionFactor;
 
             lr.SetPosition(0, start);
             lr.SetPosition(1, end);
 
             outlineRenderers[i] = lr;
-            lineObj.layer = 31;
+            
+            // 設置適當的層級
+            lineObj.layer = gameObject.layer; // 使用與父物件相同的層級
         }
     }
 
@@ -101,12 +168,22 @@ public class OutlineEffect : MonoBehaviour
     public void SetOutlineColor(Color color)
     {
         outlineColor = color;
+        
+        // 更新材質顏色
+        if (outlineMaterial != null)
+        {
+            outlineMaterial.color = color;
+        }
+        
+        // 確保所有LineRenderer使用更新後的顏色
         if (outlineRenderers != null)
         {
             foreach (LineRenderer lr in outlineRenderers)
             {
                 if (lr && lr.material)
+                {
                     lr.material.color = color;
+                }
             }
         }
     }
@@ -149,5 +226,38 @@ public class OutlineEffect : MonoBehaviour
     void OnDestroy()
     {
         DestroyOutline();
+        
+        // 清理材質
+        if (outlineMaterial != null)
+        {
+            if (Application.isPlaying)
+                Destroy(outlineMaterial);
+            else
+                DestroyImmediate(outlineMaterial);
+        }
+    }
+
+    // 新增：強制重新創建outline（用於除錯）
+    [ContextMenu("Recreate Outline")]
+    public void RecreateOutline()
+    {
+        DestroyOutline();
+        CreateOutlineMaterial();
+        CreateOutline();
+    }
+
+    // 新增：檢查當前使用的Shader
+    [ContextMenu("Debug Shader Info")]
+    public void DebugShaderInfo()
+    {
+        if (outlineMaterial != null)
+        {
+            Debug.Log($"當前使用的Shader: {outlineMaterial.shader.name}");
+            Debug.Log($"材質顏色: {outlineMaterial.color}");
+        }
+        else
+        {
+            Debug.Log("outline材質為null");
+        }
     }
 }

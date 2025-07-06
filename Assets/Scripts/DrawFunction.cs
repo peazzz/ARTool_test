@@ -78,6 +78,7 @@ public class DrawFunction : MonoBehaviour
 
     public Slider CountSlider;
     public InputField CountInputField;
+    public GameObject TwoPointHint;
 
     void Start()
     {
@@ -221,7 +222,7 @@ public class DrawFunction : MonoBehaviour
 
         if (TextureMode && sculptFunction.currentSelectedObject != null)
         {
-            if (GetInput() && (usePen_Material || useEraser_Material) && !uiManager.ColorPicker.activeInHierarchy)
+            if (GetInput() && (usePen_Material || useEraser_Material)&& !uiManager.ColorPicker.activeInHierarchy && !uiManager.ColorPicker2.activeInHierarchy)
             {
                 Handle3DPainting();
             }
@@ -551,12 +552,23 @@ public class DrawFunction : MonoBehaviour
             if (TextureMode)
             {
                 Vector3 rayStart = particlePosition + Vector3.up * 1f;
-                Ray ray = new Ray(rayStart, Vector3.down);
+    Ray ray = new Ray(rayStart, Vector3.down);
 
-                if (Physics.Raycast(ray, out RaycastHit hit, 2f))
-                {
-                    particlePosition = hit.point + hit.normal * 0.01f;
-                }
+    if (Physics.Raycast(ray, out RaycastHit hit, 2f))
+    {
+        particlePosition = hit.point + hit.normal * 0.01f;
+    }
+    else
+    {
+        // 如果沒找到，從攝影機方向檢測
+        Vector3 cameraDirection = (particlePosition - arCamera.transform.position).normalized;
+        Ray cameraRay = new Ray(arCamera.transform.position, cameraDirection);
+        
+        if (Physics.Raycast(cameraRay, out RaycastHit cameraHit, 100f))
+        {
+            particlePosition = cameraHit.point + cameraHit.normal * 0.01f;
+        }
+    }
             }
 
             CreateParticleAtPosition(particlePosition);
@@ -811,8 +823,13 @@ public class DrawFunction : MonoBehaviour
         {
             TwoPointActionButton.GetComponent<Image>().color = new Color(128f / 255f, 128f / 255f, 128f / 255f);
             ResetTwoPointState(); textureClickEnabled = false; hasProcessedClick = false;
+            TwoPointHint.SetActive(false);
         }
-        else TwoPointActionButton.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
+        else
+        {
+            TwoPointActionButton.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
+            TwoPointHint.SetActive(true);
+        }
     }
 
     void HandleSpaceParticleTwoPoint()
