@@ -20,8 +20,8 @@ public class UIManager : MonoBehaviour
     private bool ClearMode;
     private readonly Vector3 UI_SHOW_POSITION = Vector3.zero;
     private readonly Vector3 UI_HIDE_POSITION = new Vector3(0, -400, 0);
-    private readonly Vector3 ARROW_NORMAL_SCALE = new Vector3(0.6f, 0.6f, 0.6f);
-    private readonly Vector3 ARROW_FLIPPED_SCALE = new Vector3(0.6f, -0.6f, 0.6f);
+    private readonly Vector3 ARROW_NORMAL_SCALE = new Vector3(0.8f, 0.8f, 0.8f);
+    private readonly Vector3 ARROW_FLIPPED_SCALE = new Vector3(0.8f, 0.8f, 0.8f);
     public bool inSculptMode = false;
     public GameObject SelectObjectHint;
 
