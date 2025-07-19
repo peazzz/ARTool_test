@@ -22,6 +22,7 @@ public class PaintManager : MonoBehaviour
 
     private List<Texture2D> paintHistory = new List<Texture2D>();
     private int maxHistoryCount = 10;
+    private ARMaterialManager arMaterialManager;
 
     void Start()
     {
@@ -104,12 +105,19 @@ public class PaintManager : MonoBehaviour
 
     void CreateMaterialInstance()
     {
+        arMaterialManager = GetComponent<ARMaterialManager>();
         DualMaterialManager dualManager = GetComponent<DualMaterialManager>();
         if (dualManager != null)
         {
             dualManager.UpdatePaintTexture();
             return;
         }
+
+        if (arMaterialManager != null)
+    {
+        arMaterialManager.UpdatePaintTexture(paintTexture);
+        return;
+    }
 
         if (targetRenderer.material != null)
         {
@@ -339,11 +347,18 @@ public class PaintManager : MonoBehaviour
 
         paintTexture.Apply();
 
+        if (arMaterialManager != null)
+    {
+        arMaterialManager.UpdatePaintTexture(paintTexture);
+    }
+    else
+    {
         DualMaterialManager dualManager = GetComponent<DualMaterialManager>();
         if (dualManager != null)
         {
             dualManager.UpdatePaintTexture();
         }
+    }
     }
 
     float CalculateSquareBrushStrength(int x, int y, int brushRadius)
