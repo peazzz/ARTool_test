@@ -128,6 +128,17 @@ public class DualMaterialManager : MonoBehaviour
                 activeMaterial.mainTexture = null;
             }
 
+            PaintManager paintManager = GetComponent<PaintManager>();
+            if (paintManager != null)
+            {
+                Texture2D paintTexture = paintManager.GetPaintTextureReference(); // 需要新增這個方法
+                if (paintTexture != null && activeMaterial.HasProperty("_PaintTexture"))
+                {
+                    activeMaterial.SetTexture("_PaintTexture", paintTexture);
+                    activeMaterial.SetFloat("_PaintOpacity", 1.0f);
+                }
+            }
+
             meshRenderer.material = activeMaterial;
         }
     }
@@ -151,6 +162,17 @@ public class DualMaterialManager : MonoBehaviour
             if (activeMaterial.HasProperty("_Color"))
             {
                 activeMaterial.SetColor("_Color", currentColor);
+            }
+
+            PaintManager paintManager = GetComponent<PaintManager>();
+            if (paintManager != null)
+            {
+                Texture2D paintTexture = paintManager.GetPaintTextureReference();
+                if (paintTexture != null && activeMaterial.HasProperty("_PaintTexture"))
+                {
+                    activeMaterial.SetTexture("_PaintTexture", paintTexture);
+                    activeMaterial.SetFloat("_PaintOpacity", 1.0f);
+                }
             }
 
             meshRenderer.material = activeMaterial;
@@ -270,5 +292,22 @@ public class DualMaterialManager : MonoBehaviour
     [System.Diagnostics.Conditional("UNITY_EDITOR")]
     public void LogCurrentState()
     {
+    }
+
+    public void UpdatePaintTexture()
+    {
+        if (activeMaterial != null)
+        {
+            PaintManager paintManager = GetComponent<PaintManager>();
+            if (paintManager != null)
+            {
+                Texture2D paintTexture = paintManager.GetPaintTextureReference();
+                if (paintTexture != null && activeMaterial.HasProperty("_PaintTexture"))
+                {
+                    activeMaterial.SetTexture("_PaintTexture", paintTexture);
+                    activeMaterial.SetFloat("_PaintOpacity", 1.0f);
+                }
+            }
+        }
     }
 }

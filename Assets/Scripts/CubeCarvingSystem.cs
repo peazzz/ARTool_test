@@ -111,6 +111,12 @@ public class CubeCarvingSystem : MonoBehaviour
         meshCollider = GetComponent<MeshCollider>();
         if (!meshCollider) meshCollider = gameObject.AddComponent<MeshCollider>();
 
+        PaintManager paintManager = GetComponent<PaintManager>();
+        if (!paintManager)
+        {
+            paintManager = gameObject.AddComponent<PaintManager>();
+        }
+
         if (cubeMaterial && meshRenderer) meshRenderer.material = cubeMaterial;
 
         int sculptLayer = LayerMask.NameToLayer("SculptObject");

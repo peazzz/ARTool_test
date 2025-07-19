@@ -56,6 +56,7 @@ public class SavedObjectData
         public TextureProperty paintTexture;
         public ColorProperty albedoColor;
         public TextureProperty albedoTexture;
+        public TextureProperty paintedResult;
 
         [System.Serializable]
         public class ColorProperty
@@ -177,14 +178,14 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         FileBrowser.SetFilters(true,
             new FileBrowser.Filter("JSON Files", ".json"),
             new FileBrowser.Filter("OBJ Files", ".obj"),
-            new FileBrowser.Filter("All Supported", ".json", ".obj")); //�]�w�ɮ׿z��
+            new FileBrowser.Filter("All Supported", ".json", ".obj"));
 
-        string defaultPath = GetObjectsSavePath(); //�]�w�x�s���|
-        CreateSaveDirectory(); //���|���s�b�h�إ߸��|
+        string defaultPath = GetObjectsSavePath();
+        CreateSaveDirectory();
 
         if (Directory.Exists(defaultPath))
         {
-            FileBrowser.AddQuickLink("ARTool Objects", defaultPath, null); //�s�W���|��m�ܧֳt�s��
+            FileBrowser.AddQuickLink("ARTool Objects", defaultPath, null);
         }
 
 #if UNITY_IOS
@@ -614,6 +615,30 @@ public class ObjectSaveLoadSystem : MonoBehaviour
             materialData.shaderName = renderer.material.shader.name;
             materialData.colorTint = new SavedObjectData.MaterialData.ColorProperty(renderer.material.color);
         }
+
+        PaintManager paintManager = targetObject.GetComponent<PaintManager>();
+        if (paintManager != null)
+        {
+            Texture2D paintedTexture = paintManager.GetPaintTexture();
+            if (paintedTexture != null)
+            {
+                materialData.paintedResult = new SavedObjectData.MaterialData.TextureProperty();
+                materialData.paintedResult.hasTexture = true;
+                materialData.paintedResult.width = paintedTexture.width;
+                materialData.paintedResult.height = paintedTexture.height;
+                materialData.paintedResult.textureData = System.Convert.ToBase64String(paintedTexture.EncodeToPNG());
+            }
+        }
+    }
+
+    private bool HasPaintData(Texture2D texture)
+    {
+        Color[] pixels = texture.GetPixels();
+        foreach (Color pixel in pixels)
+        {
+            if (pixel.a > 0.01f) return true;
+        }
+        return false;
     }
 
     private string GenerateObjectId()
@@ -1043,7 +1068,6 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         meshFilter.mesh = mesh;
         meshCollider.sharedMesh = mesh;
 
-        // ��ηs�� OBJMaterialManager
         OBJMaterialManager objMaterialManager = newObject.AddComponent<OBJMaterialManager>();
 
         SculptFunction sculptFunction = FindObjectOfType<SculptFunction>();
@@ -1420,6 +1444,12 @@ public class ObjectSaveLoadSystem : MonoBehaviour
                 newObject.AddComponent<CubeCarvingSystem>();
             }
 
+            PaintManager paintManager = newObject.GetComponent<PaintManager>();
+            if (paintManager == null)
+            {
+                paintManager = newObject.AddComponent<PaintManager>();
+            }
+
             if (spawnParent != null)
                 newObject.transform.SetParent(spawnParent);
 
@@ -1616,15 +1646,34 @@ public class ObjectSaveLoadSystem : MonoBehaviour
             if (materialData.paintTexture != null && materialData.paintTexture.hasTexture
                 && !string.IsNullOrEmpty(materialData.paintTexture.textureData))
             {
+                PaintManager paintManager = targetObject.GetComponent<PaintManager>();
+                if (paintManager == null)
+                {
+                    paintManager = targetObject.AddComponent<PaintManager>();
+                }
+
                 byte[] textureBytes = System.Convert.FromBase64String(materialData.paintTexture.textureData);
                 Texture2D texture = new Texture2D(materialData.paintTexture.width, materialData.paintTexture.height);
                 texture.LoadImage(textureBytes);
 
+                paintManager.LoadPaintTexture(texture);
                 dualManager.SetTextureMode(texture);
             }
             else
             {
                 dualManager.SetPaintMode();
+            }
+
+            if (materialData.paintedResult != null && materialData.paintedResult.hasTexture
+            && !string.IsNullOrEmpty(materialData.paintedResult.textureData))
+            {
+                PaintManager paintManager = targetObject.GetComponent<PaintManager>();
+                if (paintManager == null)
+                {
+                    paintManager = targetObject.AddComponent<PaintManager>();
+                }
+
+                StartCoroutine(RestorePaintDataDelayed(paintManager, materialData.paintedResult));
             }
         }
         catch (System.Exception e)
@@ -1705,5 +1754,21 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         {
             Debug.Log($"Directory does not exist: {path}");
         }
+    }
+
+    private IEnumerator RestorePaintDataDelayed(PaintManager paintManager, SavedObjectData.MaterialData.TextureProperty paintData)
+    {
+        yield return null;
+        yield return null;
+
+        paintManager.EnsurePaintTextureExists();
+
+        byte[] textureBytes = System.Convert.FromBase64String(paintData.textureData);
+        Texture2D paintTexture = new Texture2D(paintData.width, paintData.height);
+        paintTexture.LoadImage(textureBytes);
+
+        paintManager.LoadPaintTexture(paintTexture);
+
+        Debug.Log("Paint data restored successfully");
     }
 }

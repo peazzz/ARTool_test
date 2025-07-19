@@ -28,8 +28,18 @@ public class PaintManager : MonoBehaviour
         InitializePaintSystem();
     }
 
+    void Awake()
+    {
+        if (Application.isPlaying)
+        {
+            InitializePaintSystem();
+        }
+    }
+
     void InitializePaintSystem()
     {
+        if (paintTexture != null) return;
+
         targetRenderer = GetComponent<Renderer>();
         carvingSystem = GetComponent<CubeCarvingSystem>();
 
@@ -87,8 +97,20 @@ public class PaintManager : MonoBehaviour
         paintTexture.SetPixels(pixels);
     }
 
+    public Texture2D GetPaintTextureReference()
+    {
+        return paintTexture;
+    }
+
     void CreateMaterialInstance()
     {
+        DualMaterialManager dualManager = GetComponent<DualMaterialManager>();
+        if (dualManager != null)
+        {
+            dualManager.UpdatePaintTexture();
+            return;
+        }
+
         if (targetRenderer.material != null)
         {
             materialInstance = new Material(targetRenderer.material);
@@ -316,27 +338,30 @@ public class PaintManager : MonoBehaviour
         }
 
         paintTexture.Apply();
+
+        DualMaterialManager dualManager = GetComponent<DualMaterialManager>();
+        if (dualManager != null)
+        {
+            dualManager.UpdatePaintTexture();
+        }
     }
 
     float CalculateSquareBrushStrength(int x, int y, int brushRadius)
     {
         if (brushRadius <= 0) return 1f;
 
-        // 計算到邊界的距離（方形）
         int distanceToEdgeX = brushRadius - Mathf.Abs(x);
         int distanceToEdgeY = brushRadius - Mathf.Abs(y);
         int minDistanceToEdge = Mathf.Min(distanceToEdgeX, distanceToEdgeY);
 
-        // 計算軟邊緣
         float softEdgePixels = brushSoftness * brushRadius;
     
         if (minDistanceToEdge >= softEdgePixels)
         {
-            return 1f; // 完全不透明的中心區域
+            return 1f;
         }
         else if (minDistanceToEdge > 0)
         {
-            // 軟邊緣漸變
             return (float)minDistanceToEdge / softEdgePixels;
         }
         else
@@ -459,34 +484,110 @@ public class PaintManager : MonoBehaviour
 
     public void EnsurePaintTextureExists()
 {
-    targetRenderer = GetComponent<Renderer>();
-    carvingSystem = GetComponent<CubeCarvingSystem>();
-    
-    if (targetRenderer == null || carvingSystem == null)
-    {
-        return;
+        if (targetRenderer == null)
+            targetRenderer = GetComponent<Renderer>();
+
+        if (carvingSystem == null)
+            carvingSystem = GetComponent<CubeCarvingSystem>();
+
+        if (targetRenderer == null || carvingSystem == null)
+        {
+            Debug.LogWarning("PaintManager: Missing required components (Renderer or CubeCarvingSystem)");
+            return;
+        }
+
+        if (paintTexture == null)
+        {
+            Debug.Log("PaintManager: Creating paint texture...");
+            CreatePaintTexture();
+        }
+
+        DualMaterialManager dualManager = GetComponent<DualMaterialManager>();
+        if (dualManager != null)
+        {
+            dualManager.UpdatePaintTexture();
+        }
+        else
+        {
+            if (materialInstance == null || targetRenderer.material != materialInstance)
+            {
+                CreateMaterialInstance();
+            }
+            else
+            {
+                if (materialInstance.HasProperty("_PaintTexture"))
+                {
+                    materialInstance.SetTexture("_PaintTexture", paintTexture);
+                }
+
+                if (materialInstance.HasProperty("_PaintOpacity"))
+                {
+                    materialInstance.SetFloat("_PaintOpacity", 1.0f);
+                }
+
+                if (targetRenderer.material != materialInstance)
+                {
+                    targetRenderer.material = materialInstance;
+                }
+            }
+        }
     }
 
-    if (paintTexture == null)
+    public Texture2D GetPaintTexture()
     {
-        CreatePaintTexture();
+        if (paintTexture == null) return null;
+
+        Texture2D readableTexture = new Texture2D(paintTexture.width, paintTexture.height, TextureFormat.RGBA32, false);
+
+        RenderTexture renderTexture = RenderTexture.GetTemporary(paintTexture.width, paintTexture.height);
+        Graphics.Blit(paintTexture, renderTexture);
+
+        RenderTexture.active = renderTexture;
+        readableTexture.ReadPixels(new Rect(0, 0, paintTexture.width, paintTexture.height), 0, 0);
+        readableTexture.Apply();
+
+        RenderTexture.active = null;
+        RenderTexture.ReleaseTemporary(renderTexture);
+
+        return readableTexture;
     }
-    
-    if (materialInstance == null || targetRenderer.material == materialInstance)
+
+    public bool HasPaintData()
     {
-        CreateMaterialInstance();
-    }
-    else
-    {
-        materialInstance.SetTexture("_PaintTexture", paintTexture);
-        materialInstance.SetFloat("_PaintOpacity", 1.0f);
-        
-        if (materialInstance.HasProperty("_UsePaintTexture"))
+        if (paintTexture == null) return false;
+
+        Color[] pixels = paintTexture.GetPixels();
+        foreach (Color pixel in pixels)
         {
-            materialInstance.SetFloat("_UsePaintTexture", 1.0f);
+            if (pixel.a > 0.01f) return true;
         }
-        
-        targetRenderer.material = materialInstance;
+        return false;
     }
-}
+
+    public void LoadPaintTexture(Texture2D loadedTexture)
+    {
+        if (loadedTexture == null) return;
+
+        if (paintTexture == null)
+        {
+            InitializePaintSystem();
+        }
+
+        paintTexture.SetPixels(loadedTexture.GetPixels());
+        paintTexture.Apply();
+
+        DualMaterialManager dualManager = GetComponent<DualMaterialManager>();
+        if (dualManager != null)
+        {
+            dualManager.UpdatePaintTexture();
+        }
+        else
+        {
+            if (materialInstance != null)
+            {
+                materialInstance.SetTexture("_PaintTexture", paintTexture);
+                materialInstance.SetFloat("_PaintOpacity", 1.0f);
+            }
+        }
+    }
 }

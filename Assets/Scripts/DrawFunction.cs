@@ -318,6 +318,8 @@ public class DrawFunction : MonoBehaviour
                         if (paintManager == null)
                         {
                             paintManager = hit.collider.gameObject.AddComponent<PaintManager>();
+
+                            StartCoroutine(EnsurePaintManagerInitialized(paintManager));
                         }
 
                         if (useEraser_Material)
@@ -560,7 +562,6 @@ public class DrawFunction : MonoBehaviour
     }
     else
     {
-        // 如果沒找到，從攝影機方向檢測
         Vector3 cameraDirection = (particlePosition - arCamera.transform.position).normalized;
         Ray cameraRay = new Ray(arCamera.transform.position, cameraDirection);
         
@@ -1323,6 +1324,17 @@ public class DrawFunction : MonoBehaviour
         if (CountInputField)
         {
             CountInputField.text = particleCount.ToString();
+        }
+    }
+
+    private IEnumerator EnsurePaintManagerInitialized(PaintManager paintManager)
+    {
+        yield return null;
+        yield return null; 
+
+        if (paintManager != null)
+        {
+            paintManager.EnsurePaintTextureExists();
         }
     }
 }
