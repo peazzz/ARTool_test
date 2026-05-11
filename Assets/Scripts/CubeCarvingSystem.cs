@@ -285,26 +285,29 @@ public class CubeCarvingSystem : MonoBehaviour
         reusableTriangles.Clear();
         reusableNormals.Clear();
         reusableUVs.Clear();
+        // 計算單個體素的實際大小（模型總尺寸除以體素網格解析度）
         float voxelSize = cubeSize / gridSize;
 
+        // 遍歷所有啟用體素的位置，生成點線面等幾何資料
         for (int x = 0; x < gridSize; x++)
             for (int y = 0; y < gridSize; y++)
                 for (int z = 0; z < gridSize; z++)
                     if (voxels[x, y, z])
-                        GenerateVoxelFaces(x, y, z, voxelSize, reusableVertices, reusableTriangles, reusableNormals, reusableUVs);
+                        GenerateVoxelFaces(x, y, z, voxelSize, reusableVertices, 
+                            reusableTriangles, reusableNormals, reusableUVs);
 
         if (!mesh) mesh = new Mesh { name = $"VoxelMesh_{shapeType}" };
         mesh.Clear();
 
         if (reusableVertices.Count > 0)
         {
+            // 將幾何資料指派給網格物件
             mesh.vertices = reusableVertices.ToArray();
             mesh.triangles = reusableTriangles.ToArray();
             mesh.normals = reusableNormals.ToArray();
             mesh.uv = reusableUVs.ToArray();
             mesh.RecalculateBounds();
         }
-
         meshFilter.mesh = mesh;
 
         if (meshRenderer)
@@ -331,7 +334,9 @@ public class CubeCarvingSystem : MonoBehaviour
 
     void GenerateVoxelFaces(int x, int y, int z, float voxelSize, List<Vector3> meshVertices, List<int> triangles, List<Vector3> normals, List<Vector2> uvs)
     {
-        Vector3 voxelPos = VoxelToWorld(x, y, z);
+        Vector3 voxelPos = VoxelToWorld(x, y, z); // 計算當前體素在世界座標中的位置
+
+        //計算體素的8個頂點
         Vector3[] vertices = new Vector3[] {
             voxelPos + new Vector3(0, 0, 0), voxelPos + new Vector3(voxelSize, 0, 0),
             voxelPos + new Vector3(0, voxelSize, 0), voxelPos + new Vector3(voxelSize, voxelSize, 0),
@@ -382,14 +387,20 @@ public class CubeCarvingSystem : MonoBehaviour
         }
     }
 
-    void AddQuadWithUV(List<Vector3> meshVertices, List<int> triangles, List<Vector3> normals, List<Vector2> uvs, Vector3[] quadVertices, Vector3 normal, int voxelX, int voxelY, int voxelZ, FaceDirection face)
+    void AddQuadWithUV(List<Vector3> meshVertices, List<int> triangles,
+        List<Vector3> normals, List<Vector2> uvs, Vector3[] quadVertices,
+        Vector3 normal, int voxelX, int voxelY, int voxelZ, FaceDirection face)
     {
         int startIndex = meshVertices.Count;
         meshVertices.AddRange(quadVertices);
         for (int i = 0; i < 4; i++) normals.Add(normal);
-        Vector2[] quadUVs = uvMode == UVMode.UnwrappedFaces ? CalculateUnwrappedUV(voxelX, voxelY, voxelZ, face) : CalculateContinuousUV(voxelX, voxelY, voxelZ, face);
+        Vector2[] quadUVs = uvMode == UVMode.UnwrappedFaces ?
+            CalculateUnwrappedUV(voxelX, voxelY, voxelZ, face) : 
+            CalculateContinuousUV(voxelX, voxelY, voxelZ, face);
+
         uvs.AddRange(quadUVs);
-        triangles.AddRange(new int[] { startIndex, startIndex + 1, startIndex + 2, startIndex, startIndex + 2, startIndex + 3 });
+        triangles.AddRange(new int[] { startIndex, startIndex + 1,
+            startIndex + 2, startIndex, startIndex + 2, startIndex + 3 });
     }
 
     Vector2[] CalculateUnwrappedUV(int x, int y, int z, FaceDirection face)

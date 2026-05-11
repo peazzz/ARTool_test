@@ -427,16 +427,15 @@ public class Canvas2DManager : MonoBehaviour
     {
         isGrid = !isGrid;
 
-        if (isGrid)
-        {
-            GridImage.SetActive(true);
-            GridButton.GetComponent<Image>().color = new Color(143f / 255f, 255f / 255f, 196f / 255f);
-        }
-        else
-        {
-            GridImage.SetActive(false);
-            GridButton.GetComponent<Image>().color = new Color(255f / 255f, 255f / 255f, 255f / 255f);
-        }
+        GameObject targetGridImage = isCurrentlyTablet ? GridImage_Tablet : GridImage;
+        GameObject targetGridButton = isCurrentlyTablet ? GridButton_Tablet : GridButton;
+
+        Color buttonColor = isGrid ?
+            new Color(143f / 255f, 255f / 255f, 196f / 255f) :
+            new Color(255f / 255f, 255f / 255f, 255f / 255f);
+
+        targetGridImage.SetActive(isGrid);
+        targetGridButton.GetComponent<Image>().color = buttonColor;
     }
 
     public void Grid_Tablet()

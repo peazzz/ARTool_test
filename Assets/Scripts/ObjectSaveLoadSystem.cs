@@ -10,6 +10,12 @@ using UnityEditor;
 [System.Serializable]
 public class SavedObjectData
 {
+    public ObjectInfo objectInfo = new ObjectInfo();
+    public TransformData transform = new TransformData();
+    public GeometryData geometry = new GeometryData();
+    public CarvingData carvingData = new CarvingData();
+    public List<MaterialData> materials = new List<MaterialData>(); // 假設你是要存清單
+
     [System.Serializable]
     public class ObjectInfo
     {
@@ -31,32 +37,29 @@ public class SavedObjectData
     [System.Serializable]
     public class GeometryData
     {
-        public string shapeType;
-        public int gridSize;
-        public float cubeSize;
-        public string uvMode;
+        public string shapeType; //形狀模型(不重要)
+        public int gridSize;     //體素解析度
+        public float cubeSize;   //模型大小
+        public string uvMode;    //UV模式(盒映射、展開UV)
     }
 
     [System.Serializable]
     public class CarvingData
     {
-        public bool hasCarving;
-        public string originalShape;
-        public int[] gridDimensions = new int[3];
-        public string voxelData;
-        public string compressionMethod = "BitPacking";
+        public bool hasCarving;                  //是否有雕刻
+        public string originalShape;             //未雕刻形狀
+        public int[] gridDimensions = new int[3];//網格維度(=gridSize)
+        public string voxelData;                 //體素資料
     }
 
     [System.Serializable]
     public class MaterialData
     {
-        public string materialType;
-        public string shaderName;
-        public ColorProperty colorTint;
-        public TextureProperty paintTexture;
-        public ColorProperty albedoColor;
-        public TextureProperty albedoTexture;
-        public TextureProperty paintedResult;
+        public string materialType;          //材質類型
+        public string shaderName;            //Shader名稱
+        public ColorProperty colorTint;      //材質顏色
+        public TextureProperty paintTexture; //材質圖片
+        public TextureProperty paintedResult;//繪畫
 
         [System.Serializable]
         public class ColorProperty
@@ -79,12 +82,6 @@ public class SavedObjectData
             public float opacity = 1f;
         }
     }
-
-    public ObjectInfo objectInfo = new ObjectInfo();
-    public TransformData transform = new TransformData();
-    public GeometryData geometry = new GeometryData();
-    public CarvingData carvingData = new CarvingData();
-    public MaterialData materials = new MaterialData();
 }
 
 public class ObjectSaveLoadSystem : MonoBehaviour
@@ -112,7 +109,7 @@ public class ObjectSaveLoadSystem : MonoBehaviour
     public int voxelResolution = 32;
     public float voxelPadding = 0.1f;
     public bool enableVoxelization = true;
-    public VoxelizationMethod voxelMethod = VoxelizationMethod.Raycast;
+    public VoxelizationMethod voxelMethod = VoxelizationMethod.SurfaceDistance;
     public float targetObjectSize = 2.0f;
 
     [Header("Debug")]
@@ -586,8 +583,9 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         return compressed;
     }
 
-    private void CollectMaterialData(GameObject targetObject, SavedObjectData.MaterialData materialData)
+    private void CollectMaterialData(GameObject targetObject, List<SavedObjectData.MaterialData> materialsList)
     {
+        SavedObjectData.MaterialData materialData = new SavedObjectData.MaterialData();
         DualMaterialManager dualManager = targetObject.GetComponent<DualMaterialManager>();
         MeshRenderer renderer = targetObject.GetComponent<MeshRenderer>();
 
@@ -629,6 +627,8 @@ public class ObjectSaveLoadSystem : MonoBehaviour
                 materialData.paintedResult.textureData = System.Convert.ToBase64String(paintedTexture.EncodeToPNG());
             }
         }
+
+        materialsList.Add(materialData);
     }
 
     private bool HasPaintData(Texture2D texture)
@@ -1629,8 +1629,12 @@ public class ObjectSaveLoadSystem : MonoBehaviour
         }
     }
 
-    private void RestoreMaterialData(GameObject targetObject, SavedObjectData.MaterialData materialData)
+    private void RestoreMaterialData(GameObject targetObject, List<SavedObjectData.MaterialData> materialsList)
     {
+        if (materialsList == null || materialsList.Count == 0) return;
+
+        SavedObjectData.MaterialData materialData = materialsList[0];
+
         try
         {
             DualMaterialManager dualManager = targetObject.GetComponent<DualMaterialManager>();

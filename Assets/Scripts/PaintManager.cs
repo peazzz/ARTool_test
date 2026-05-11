@@ -193,22 +193,15 @@ public class PaintManager : MonoBehaviour
 
     public void PaintAt(Vector3 worldPosition, Vector3 normal)
     {
-        if (paintTexture == null || carvingSystem == null)
-            return;
-
+        // 世界座標轉換為物件的本地座標
         Vector3 localPosition = transform.InverseTransformPoint(worldPosition);
+        // 世界座標的法向量轉換為物件的本地法向量
         Vector3 localNormal = transform.InverseTransformDirection(normal);
-
+        // 根據本地法向量判斷是立方體的哪一個面（上、下、前、後、左、右)
         FaceDirection face = GetFaceDirectionFromLocalNormal(localNormal);
-
+        // 根據本地位置、面向和法向量計算該點在紋理上對應的UV座標
         Vector2 uv = CalculateUVFromLocalPosition(localPosition, face, localNormal);
-
-        if (showDebugInfo)
-        {
-            Vector3 cubeCenter = transform.position;
-            Vector3 relativePos = worldPosition - cubeCenter;
-        }
-
+        // 在計算出的UV座標位置進行實際的繪畫操作
         PaintAtUV(uv, face);
     }
 
